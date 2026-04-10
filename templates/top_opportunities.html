@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Top Opportunities{% endblock %}
+{% block content %}
+
+<h3>★ Top Opportunities</h3>
+<p class="text-muted">
+  Ordenado por <code>opportunity_probability</code> calculado por
+  <code>opportunity_predictor.py</code>. Combinação calibrada de discount,
+  liquidity, velocity por token, ausência de fraud e ausência de outlier.
+  <strong>Não é modelo treinado</strong> — pesos manuais documentados no docstring
+  do módulo.
+</p>
+
+<div class="table-responsive">
+<table class="table table-sm table-hover align-middle">
+  <thead class="table-light">
+    <tr>
+      <th style="width: 70px">prob</th>
+      <th style="width: 60px">opp</th>
+      <th style="width: 60px">liq</th>
+      <th style="width: 100px">categoria</th>
+      <th style="width: 110px">ID</th>
+      <th>Título</th>
+      <th class="text-end" style="width: 120px">Preço</th>
+      <th class="text-end" style="width: 90px">Desconto</th>
+      <th>Local</th>
+      <th class="text-center" style="width: 60px">recent</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td>
+        {% set p = r['opportunity_probability'] %}
+        <span class="badge bg-{% if p >= 0.7 %}success{% elif p >= 0.4 %}warning text-dark{% else %}secondary{% endif %}">
+          {{ "%.2f"|format(p) }}
+        </span>
+      </td>
+      <td>{{ r['opportunity_score'] or '-' }}</td>
+      <td>{{ r['liquidity_score'] or '-' }}</td>
+      <td>{% if r['category'] %}<span class="badge bg-light text-dark">{{ r['category'] }}</span>{% else %}-{% endif %}</td>
+      <td class="mono">{{ r['id'] }}</td>
+      <td><a href="/item/{{ r['id'] }}">{{ r['current_title'] or '(sem título)' }}</a></td>
+      <td class="text-end price">
+        {{ r['current_price'] or '-' }}
+        {% if r['current_currency'] %}<span class="text-muted">{{ r['current_currency'] }}</span>{% endif %}
+      </td>
+      <td class="text-end">
+        {% if r['discount_percentage'] is not none %}
+          {{ "%.0f"|format(r['discount_percentage']) }}%
+        {% else %}-{% endif %}
+      </td>
+      <td>{{ r['current_location'] or '-' }}</td>
+      <td class="text-center">
+        {% if r['very_recent_listing'] %}<span class="badge bg-info text-dark">▲</span>{% endif %}
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="10" class="text-center text-muted p-4">
+      Sem listings com opportunity_probability. Rode <code>python opportunity_predictor.py</code>.
+    </td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

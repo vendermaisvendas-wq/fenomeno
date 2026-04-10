@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}Watcher Insights{% endblock %}
+{% block content %}
+
+<h3>Watcher Insights</h3>
+<p class="text-muted">
+  Performance dos watchers cadastrados — quais estão pegando mais anúncios,
+  distribuição por prioridade, tempo entre descoberta e alerta, e grupos
+  com keyword/region em comum (candidatos a otimização compartilhada).
+</p>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="card metric-card"><div class="card-body">
+      <div class="label">distribuição por prioridade (ativos)</div>
+      <ul class="list-unstyled mb-0 mt-2">
+      {% for r in by_priority %}
+        <li>
+          P{{ r['priority'] }}
+          {% if r['priority'] == 1 %}<small class="text-muted">(10min)</small>
+          {% elif r['priority'] == 2 %}<small class="text-muted">(30min)</small>
+          {% elif r['priority'] == 3 %}<small class="text-muted">(1h)</small>
+          {% endif %}
+          : <strong>{{ r['n'] }}</strong>
+        </li>
+      {% else %}
+        <li class="text-muted">(nenhum)</li>
+      {% endfor %}
+      </ul>
+    </div></div>
+  </div>
+
+  <div class="col-md-9">
+    <div class="card metric-card"><div class="card-body">
+      <div class="label">tempo first_seen → alert (proxy interno, últimos 30d)</div>
+      {% if time_to_alert %}
+        <div class="row mt-2">
+          <div class="col-md-2"><strong>n:</strong> {{ time_to_alert.n }}</div>
+          <div class="col-md-2">mediana: <strong>{{ time_to_alert.median_minutes }}min</strong></div>
+          <div class="col-md-2">média: {{ time_to_alert.mean_minutes }}min</div>
+          <div class="col-md-2">p25: {{ time_to_alert.p25_minutes }}min</div>
+          <div class="col-md-2">p75: {{ time_to_alert.p75_minutes }}min</div>
+          <div class="col-md-2">p90: {{ time_to_alert.p90_minutes }}min</div>
+        </div>
+        <div class="text-muted small mt-2">
+          ⚠ Esse delta é o tempo de processamento INTERNO (entre o momento que
+          nós descobrimos o anúncio e o momento que o alerta foi enviado).
+          O tempo real desde a publicação no FB inclui ainda a latência de
+          indexação do DDG, que não conseguimos medir.
+        </div>
+      {% else %}
+        <p class="text-muted mb-0 mt-2">Sem alertas no período.</p>
+      {% endif %}
+    </div></div>
+  </div>
+</div>
+
+<h5>Watchers mais ativos (top 30 por matches totais)</h5>
+<div class="table-responsive">
+<table class="table table-sm table-hover align-middle">
+  <thead class="table-light">
+    <tr>
+      <th>#</th>
+      <th>Keyword</th>
+      <th>Região</th>
+      <th>P</th>
+      <th class="text-center">Ativo</th>
+      <th class="text-end">Total matches</th>
+      <th class="text-end">Novos (pós-backfill)</th>
+      <th>Last run</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for w in top_watchers %}
+    <tr class="{% if not w['is_active'] %}table-secondary{% endif %}">
+      <td><a href="/watchers/{{ w['watch_id'] }}" class="mono">#{{ w['watch_id'] }}</a></td>
+      <td><strong>{{ w['keyword'] }}</strong></td>
+      <td>{{ w['region'] or '-' }}</td>
+      <td class="mono">P{{ w['priority'] }}</td>
+      <td class="text-center">
+        {% if w['is_active'] %}<span class="badge bg-success">on</span>{% else %}<span class="badge bg-secondary">off</span>{% endif %}
+      </td>
+      <td class="text-end">{{ w['total_matches'] or 0 }}</td>
+      <td class="text-end">
+        {% if w['new_matches'] and w['new_matches'] > 0 %}
+          <span class="badge bg-warning text-dark">{{ w['new_matches'] }}</span>
+        {% else %}{{ w['new_matches'] or 0 }}{% endif %}
+      </td>
+      <td class="mono text-muted small">{{ (w['last_run_at'] or 'never')[:19] }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="8" class="text-center text-muted p-4">
+      Nenhum watcher cadastrado.
+    </td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<h5 class="mt-4">Grupos populares (≥2 watchers compartilhando keyword+region)</h5>
+<p class="text-muted small">
+  Estes são os candidatos ao prewarm via <code>watcher_optimizer.py</code>.
+  O cache TTL do discovery garante que cada grupo dispare DDG só uma vez por janela.
+</p>
+<div class="table-responsive">
+<table class="table table-sm">
+  <thead class="table-light">
+    <tr>
+      <th>Keyword</th>
+      <th>Região</th>
+      <th class="text-end">#watchers</th>
+      <th>watch_ids</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for g in popular_groups %}
+    <tr>
+      <td><strong>{{ g.keyword }}</strong></td>
+      <td>{{ g.region or '-' }}</td>
+      <td class="text-end">{{ g.watchers }}</td>
+      <td class="mono small">{{ g.watch_ids|join(', ') }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="4" class="text-center text-muted p-3">
+      Nenhum grupo com ≥2 watchers — sem oportunidades de compartilhamento ainda.
+    </td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

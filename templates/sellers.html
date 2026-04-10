@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Sellers{% endblock %}
+{% block content %}
+
+<h3>Ranking de vendedores</h3>
+<p class="text-muted">
+  Gerado por <code>seller_patterns.py</code>. Reliability 100 = padrão limpo;
+  penalidades acumulam por volume muito alto, duplicate ratio alto, fraud
+  médio alto, churn elevado. Listings sem <code>current_seller</code>
+  (sem login no fetch) não aparecem.
+</p>
+
+<div class="table-responsive">
+<table class="table table-sm table-hover align-middle">
+  <thead class="table-light">
+    <tr>
+      <th>Vendedor</th>
+      <th class="text-end">Total</th>
+      <th class="text-end">Ativos</th>
+      <th class="text-end">Removidos</th>
+      <th class="text-end">Dup</th>
+      <th class="text-end">Preço médio</th>
+      <th class="text-end">Opp médio</th>
+      <th class="text-end">Reliability</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td class="mono">{{ r['seller_name'] }}</td>
+      <td class="text-end">{{ r['total_listings'] }}</td>
+      <td class="text-end">{{ r['active_listings'] }}</td>
+      <td class="text-end">{{ r['removed_listings'] }}</td>
+      <td class="text-end">{{ r['duplicate_count'] }}</td>
+      <td class="text-end">
+        {% if r['avg_price'] %}{{ "%.0f"|format(r['avg_price']) }}{% else %}-{% endif %}
+      </td>
+      <td class="text-end">
+        {% if r['avg_opportunity'] %}{{ "%.0f"|format(r['avg_opportunity']) }}{% else %}-{% endif %}
+      </td>
+      <td class="text-end">
+        <span class="badge bg-{% if r['reliability_score'] >= 80 %}success{% elif r['reliability_score'] >= 50 %}warning text-dark{% else %}danger{% endif %}">
+          {{ r['reliability_score'] }}
+        </span>
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="8" class="text-center text-muted p-4">
+      Nenhum vendedor registrado. Rode <code>python seller_patterns.py</code>
+      depois que o monitor já tiver coletado alguns listings com seller_name.
+    </td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

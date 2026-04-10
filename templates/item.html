@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block title %}{{ listing['current_title'] or listing['id'] }}{% endblock %}
+{% block content %}
+
+<div class="row">
+  <div class="col-md-8">
+    <h3>
+      {{ listing['current_title'] or '(sem título)' }}
+      <small class="text-muted mono">#{{ listing['id'] }}</small>
+    </h3>
+    <p>
+      <span class="badge bg-light text-dark status-{{ listing['last_status'] }}">
+        {{ listing['last_status'] }}
+      </span>
+      {% if listing['is_removed'] %}<span class="badge bg-secondary">removido</span>{% endif %}
+      <span class="text-muted">source: {{ listing['source'] or '-' }}</span>
+    </p>
+
+    <p class="price fs-4">
+      {{ listing['current_price'] or '-' }}
+      {% if listing['current_currency'] %}<small class="text-muted">{{ listing['current_currency'] }}</small>{% endif %}
+    </p>
+
+    {% if payload and payload.description %}
+      <div class="card mb-3"><div class="card-body">
+        <h6 class="card-subtitle mb-2 text-muted">Descrição</h6>
+        <p style="white-space: pre-wrap">{{ payload.description }}</p>
+      </div></div>
+    {% endif %}
+
+    {% if payload and payload.image_urls %}
+      <h6>Fotos ({{ payload.image_urls|length }})</h6>
+      <div class="d-flex flex-wrap gap-2 mb-3">
+        {% for img in payload.image_urls[:12] %}
+          <a href="{{ img }}" target="_blank" rel="noopener">
+            <img class="thumb" src="{{ img }}" alt="">
+          </a>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    {% if price_history and price_history|length > 0 %}
+      <div class="card mb-3">
+        <div class="card-header">Histórico de preço ({{ price_history|length }} pontos)</div>
+        <div class="card-body">
+          <canvas id="priceChart" height="90"></canvas>
+        </div>
+      </div>
+      <script>
+        const ph = {{ price_history|tojson }};
+        new Chart(document.getElementById("priceChart"), {
+          type: "line",
+          data: {
+            labels: ph.map(p => p.t),
+            datasets: [{
+              label: "preço",
+              data: ph.map(p => p.price),
+              fill: true,
+              borderColor: "rgba(25,135,84,1)",
+              backgroundColor: "rgba(25,135,84,0.15)",
+              tension: 0.2,
+              pointRadius: 4,
+            }],
+          },
+          options: {
+            scales: {
+              y: { beginAtZero: false, ticks: { font: { size: 11 } } },
+              x: { ticks: { font: { size: 10 }, maxRotation: 45, minRotation: 45 } },
+            },
+            plugins: { legend: { display: false } },
+          },
+        });
+      </script>
+    {% endif %}
+
+    <p>
+      <a class="btn btn-sm btn-primary" href="{{ listing['url'] }}" target="_blank" rel="noopener">
+        Abrir no Facebook ↗
+      </a>
+    </p>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card mb-3">
+      <div class="card-header">Metadados</div>
+      <div class="card-body mono" style="font-size: 0.85rem">
+        <div>first_seen: {{ listing['first_seen_at'] }}</div>
+        <div>last_seen:  {{ listing['last_seen_at'] }}</div>
+        {% if listing['removed_at'] %}<div>removed_at: {{ listing['removed_at'] }}</div>{% endif %}
+        {% if listing['reappeared_at'] %}<div>reappeared_at: {{ listing['reappeared_at'] }}</div>{% endif %}
+        <div>location: {{ listing['current_location'] or '-' }}</div>
+        {% if payload and payload.field_sources %}
+          <hr>
+          <div><strong>field sources:</strong></div>
+          {% for k, v in payload.field_sources.items() %}
+            <div>{{ k }}: <em>{{ v }}</em></div>
+          {% endfor %}
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card mb-3">
+      <div class="card-header">Eventos ({{ events|length }})</div>
+      <ul class="list-group list-group-flush" style="font-size: 0.85rem">
+      {% for e in events %}
+        <li class="list-group-item">
+          <span class="mono text-muted">{{ e['at'] }}</span><br>
+          <strong>{{ e['event_type'] }}</strong>
+          {% if e['old_value'] or e['new_value'] %}
+            <div class="text-muted">
+              {{ e['old_value'] or '-' }} → {{ e['new_value'] or '-' }}
+            </div>
+          {% endif %}
+        </li>
+      {% else %}
+        <li class="list-group-item text-muted">sem eventos</li>
+      {% endfor %}
+      </ul>
+    </div>
+
+    <div class="card">
+      <div class="card-header">Snapshots ({{ snapshots|length }})</div>
+      <ul class="list-group list-group-flush mono" style="font-size: 0.8rem">
+      {% for s in snapshots %}
+        <li class="list-group-item">
+          {{ s['fetched_at'] }} · {{ s['status'] }} · {{ s['payload_hash'] }}
+        </li>
+      {% endfor %}
+      </ul>
+    </div>
+  </div>
+</div>
+{% endblock %}

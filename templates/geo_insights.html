@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Geo Insights{% endblock %}
+{% block content %}
+
+<h3>Cobertura geográfica</h3>
+<p class="text-muted">
+  Dados extraídos de <code>current_location</code> e persistidos em
+  <code>geo_coverage</code> via <code>geo_coverage.py</code>. Rode o monitor ou
+  manualmente para atualizar.
+</p>
+
+<div class="row g-4 mb-4">
+  <div class="col-md-6">
+    <div class="card"><div class="card-header">Top cidades por volume</div>
+    <div class="table-responsive">
+    <table class="table table-sm mb-0">
+      <thead class="table-light">
+        <tr><th>cidade</th><th>UF</th><th class="text-end">ativos</th><th class="text-end">avg price</th><th class="text-end">cov</th></tr>
+      </thead>
+      <tbody>
+      {% for c in top_volume %}
+        <tr>
+          <td>{{ c.city }}</td>
+          <td class="mono">{{ c.state or '-' }}</td>
+          <td class="text-end">{{ c.active_count }}</td>
+          <td class="text-end">{% if c.avg_price %}{{ "%.0f"|format(c.avg_price) }}{% else %}-{% endif %}</td>
+          <td class="text-end"><span class="badge bg-secondary">{{ c.coverage_score }}</span></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5" class="text-center text-muted p-3">(sem dados — rode geo_coverage.py)</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div></div>
+  </div>
+
+  <div class="col-md-6">
+    <div class="card"><div class="card-header">Top cidades por desconto médio</div>
+    <div class="table-responsive">
+    <table class="table table-sm mb-0">
+      <thead class="table-light">
+        <tr><th>cidade</th><th>UF</th><th class="text-end">avg disc</th><th class="text-end">ativos</th></tr>
+      </thead>
+      <tbody>
+      {% for c in top_discount %}
+        <tr>
+          <td>{{ c.city }}</td>
+          <td class="mono">{{ c.state or '-' }}</td>
+          <td class="text-end">
+            {% if c.avg_discount is not none %}
+              <strong class="text-success">{{ "%.1f"|format(c.avg_discount) }}%</strong>
+            {% else %}-{% endif %}
+          </td>
+          <td class="text-end">{{ c.active_count }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div></div>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header">Por estado</div>
+  <div class="table-responsive">
+  <table class="table table-sm mb-0">
+    <thead class="table-light">
+      <tr><th>UF</th><th class="text-end">cidades</th><th class="text-end">ativos</th><th class="text-end">avg disc</th></tr>
+    </thead>
+    <tbody>
+    {% for s in states %}
+      <tr>
+        <td class="mono">{{ s.state }}</td>
+        <td class="text-end">{{ s.cities }}</td>
+        <td class="text-end">{{ s.active_count }}</td>
+        <td class="text-end">
+          {% if s.avg_discount is not none %}{{ "%.1f"|format(s.avg_discount) }}%{% else %}-{% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endblock %}

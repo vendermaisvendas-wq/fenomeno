@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+
+# Environments
+.venv/
+venv/
+env/
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# BuscaPlace runtime data (NUNCA commitar)
+marketplace.sqlite3
+marketplace.sqlite3-wal
+marketplace.sqlite3-shm
+logs/
+html_cache/
+data_lake/
+cache/
+reports/
+config/score_weights.json
+exports/
+
+# Pickles / cache binário
+*.pkl
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# pytest
+.pytest_cache/

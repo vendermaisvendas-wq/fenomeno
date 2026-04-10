@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Predicted Price{% endblock %}
+{% block content %}
+
+<h3>Preço real vs preço previsto</h3>
+<p class="text-muted">
+  Modelo treinado em <code>price_model.py</code> (sklearn GBM se disponível,
+  senão mediana de comparáveis). <code>price_gap = predicted − current</code>.
+  Positivo = anúncio abaixo do valor previsto pelo modelo (candidato a deal).
+  Ordenado por gap desc.
+</p>
+
+<div class="table-responsive">
+<table class="table table-sm table-hover align-middle">
+  <thead class="table-light">
+    <tr>
+      <th style="width: 70px">score</th>
+      <th style="width: 110px">ID</th>
+      <th>Título</th>
+      <th class="text-end" style="width: 120px">Preço</th>
+      <th class="text-end" style="width: 120px">Mediana (mv)</th>
+      <th class="text-end" style="width: 120px">Previsto (ml)</th>
+      <th class="text-end" style="width: 110px">Gap</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td>{{ r['opportunity_score'] or '-' }}</td>
+      <td class="mono">{{ r['id'] }}</td>
+      <td><a href="/item/{{ r['id'] }}">{{ r['current_title'] or '(sem título)' }}</a></td>
+      <td class="text-end price">
+        {{ r['current_price'] or '-' }}
+        {% if r['current_currency'] %}<span class="text-muted">{{ r['current_currency'] }}</span>{% endif %}
+      </td>
+      <td class="text-end text-muted">
+        {% if r['estimated_market_value'] %}{{ "%.0f"|format(r['estimated_market_value']) }}{% else %}-{% endif %}
+      </td>
+      <td class="text-end">
+        {% if r['predicted_price'] %}<strong>{{ "%.0f"|format(r['predicted_price']) }}</strong>{% else %}-{% endif %}
+      </td>
+      <td class="text-end">
+        {% if r['price_gap'] is not none %}
+          {% if r['price_gap'] > 0 %}
+            <span class="text-success fw-bold">+{{ "%.0f"|format(r['price_gap']) }}</span>
+          {% else %}
+            <span class="text-muted">{{ "%.0f"|format(r['price_gap']) }}</span>
+          {% endif %}
+        {% else %}-{% endif %}
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="7" class="text-center text-muted p-4">
+      Sem predições. Rode <code>python price_model.py</code>.
+    </td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

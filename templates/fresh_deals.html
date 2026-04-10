@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Fresh Deals{% endblock %}
+{% block content %}
+
+<h3>Fresh deals (&lt;30 min)</h3>
+<p class="text-muted">
+  Anúncios descobertos recentemente (<code>first_seen_at</code> &lt; 30 min)
+  com sinais fortes de oportunidade. Score combina desconto, liquidez,
+  opportunity_score e presença de palavra-chave popular no título.
+  Gerado por <code>fresh_opportunity_detector.py</code>.
+</p>
+
+<div class="table-responsive">
+<table class="table table-sm table-hover align-middle">
+  <thead class="table-light">
+    <tr>
+      <th style="width: 65px">fresh</th>
+      <th style="width: 65px">opp</th>
+      <th style="width: 65px">liq</th>
+      <th style="width: 100px">categoria</th>
+      <th>Título</th>
+      <th class="text-end" style="width: 120px">Preço</th>
+      <th class="text-end" style="width: 90px">Desconto</th>
+      <th style="width: 140px">Localização</th>
+      <th style="width: 160px">First seen</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td>
+        <span class="badge bg-{% if r['fresh_opportunity_score'] >= 80 %}danger{% elif r['fresh_opportunity_score'] >= 60 %}warning text-dark{% else %}secondary{% endif %}">
+          {{ r['fresh_opportunity_score'] }}
+        </span>
+      </td>
+      <td>{{ r['opportunity_score'] or '-' }}</td>
+      <td>{{ r['liquidity_score'] or '-' }}</td>
+      <td>{% if r['category'] %}<span class="badge bg-light text-dark">{{ r['category'] }}</span>{% else %}-{% endif %}</td>
+      <td><a href="/item/{{ r['id'] }}">{{ r['current_title'] or '(sem título)' }}</a></td>
+      <td class="text-end price">
+        {{ r['current_price'] or '-' }}
+        {% if r['current_currency'] %}<span class="text-muted">{{ r['current_currency'] }}</span>{% endif %}
+      </td>
+      <td class="text-end">
+        {% if r['discount_percentage'] is not none %}
+          {{ "%.0f"|format(r['discount_percentage']) }}%
+        {% else %}-{% endif %}
+      </td>
+      <td>{{ r['current_location'] or '-' }}</td>
+      <td class="mono text-muted">{{ r['first_seen_at'][:19] }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="9" class="text-center text-muted p-4">
+      Nenhum fresh deal agora. Rode <code>python fresh_opportunity_detector.py</code>
+      ou aguarde a próxima passada do monitor.
+    </td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

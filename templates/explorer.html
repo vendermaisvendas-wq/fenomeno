@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Explorer — FB Marketplace Audit{% endblock %}
+{% block content %}
+
+<h3>Explorer</h3>
+<p class="text-muted">Busca por substring no título (case-insensitive). Funciona apenas sobre os listings já coletados no banco.</p>
+
+<form method="get" action="/explorer" class="mb-4">
+  <div class="input-group">
+    <input type="text" name="q" value="{{ q }}" class="form-control"
+           placeholder="ex: hilux, iphone 13, cg titan"
+           autofocus>
+    <button class="btn btn-primary" type="submit">Buscar</button>
+  </div>
+</form>
+
+{% if q %}
+  <p>
+    <strong>{{ rows|length }}</strong> resultado(s) para <code>{{ q }}</code>
+  </p>
+  <div class="table-responsive">
+  <table class="table table-sm table-hover align-middle">
+    <thead class="table-light">
+      <tr>
+        <th style="width: 110px">ID</th>
+        <th>Título</th>
+        <th class="text-end" style="width: 120px">Preço</th>
+        <th style="width: 100px">Status</th>
+        <th style="width: 160px">Last seen</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for r in rows %}
+      <tr class="{% if r['is_removed'] %}table-secondary{% endif %}">
+        <td class="mono">{{ r['id'] }}</td>
+        <td><a href="/item/{{ r['id'] }}">{{ r['current_title'] or '(sem título)' }}</a></td>
+        <td class="text-end price">
+          {{ r['current_price'] or '-' }}
+          {% if r['current_currency'] %}<span class="text-muted">{{ r['current_currency'] }}</span>{% endif %}
+        </td>
+        <td><span class="status-{{ r['last_status'] }}">{{ r['last_status'] }}</span></td>
+        <td class="mono text-muted">{{ r['last_seen_at'] }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5" class="text-center text-muted p-4">Nada encontrado.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+{% endif %}
+{% endblock %}

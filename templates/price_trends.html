@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Price Trends{% endblock %}
+{% block content %}
+
+<h3>Price Trends</h3>
+<p class="text-muted">
+  Evolução da mediana de preço por dia, a partir de <code>price_history</code>.
+  Filtre por palavra-chave para ver tendência de um nicho específico.
+</p>
+
+<form id="trendForm" class="row g-2 mb-3">
+  <div class="col-auto">
+    <input type="text" id="keyword" class="form-control" placeholder="keyword (opcional)">
+  </div>
+  <div class="col-auto">
+    <select id="days" class="form-select">
+      <option value="7">últimos 7 dias</option>
+      <option value="30" selected>últimos 30 dias</option>
+      <option value="90">últimos 90 dias</option>
+      <option value="365">último ano</option>
+    </select>
+  </div>
+  <div class="col-auto">
+    <button type="submit" class="btn btn-primary">Atualizar</button>
+  </div>
+</form>
+
+<div class="card mb-3">
+  <div class="card-body">
+    <canvas id="trendChart" height="90"></canvas>
+  </div>
+</div>
+
+<p id="emptyMsg" class="text-muted" style="display:none">
+  Sem histórico de preço suficiente para esses critérios.
+</p>
+
+<script>
+let chart = null;
+
+function loadTrend() {
+  const kw = document.getElementById("keyword").value.trim();
+  const days = document.getElementById("days").value;
+  const qs = new URLSearchParams({ days });
+  if (kw) qs.set("keyword", kw);
+  fetch("/api/price_trends?" + qs)
+    .then(r => r.json())
+    .then(data => {
+      const empty = document.getElementById("emptyMsg");
+      if (!data.labels.length) {
+        empty.style.display = "block";
+        if (chart) { chart.destroy(); chart = null; }
+        return;
+      }
+      empty.style.display = "none";
+      const cfg = {
+        data: {
+          labels: data.labels,
+          datasets: [
+            {
+              type: "line",
+              label: "mediana de preço",
+              data: data.median,
+              borderColor: "rgba(25,135,84,1)",
+              backgroundColor: "rgba(25,135,84,0.1)",
+              fill: true,
+              tension: 0.2,
+              yAxisID: "y",
+            },
+            {
+              type: "bar",
+              label: "snapshots no dia",
+              data: data.count,
+              backgroundColor: "rgba(13,110,253,0.25)",
+              yAxisID: "y1",
+            }
+          ],
+        },
+        options: {
+          scales: {
+            y:  { beginAtZero: false, position: "left",
+                  title: { display: true, text: "preço" } },
+            y1: { beginAtZero: true, position: "right",
+                  title: { display: true, text: "contagem" },
+                  grid: { drawOnChartArea: false } },
+            x:  { ticks: { font: { size: 10 }, maxRotation: 60, minRotation: 45 } },
+          },
+        },
+      };
+      if (chart) chart.destroy();
+      chart = new Chart(document.getElementById("trendChart"), cfg);
+    });
+}
+
+document.getElementById("trendForm").addEventListener("submit", e => {
+  e.preventDefault();
+  loadTrend();
+});
+loadTrend();
+</script>
+{% endblock %}

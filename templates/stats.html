@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block title %}Stats — FB Marketplace Audit{% endblock %}
+{% block content %}
+
+<h3 class="mb-3">Estatísticas gerais</h3>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="card metric-card"><div class="card-body">
+      <div class="label">listings total</div>
+      <h2>{{ total }}</h2>
+      <small class="text-muted">ativos: {{ active }} · removidos: {{ removed }}</small>
+    </div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card metric-card"><div class="card-body">
+      <div class="label">snapshots</div>
+      <h2>{{ snapshots_total }}</h2>
+    </div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card metric-card"><div class="card-body">
+      <div class="label">price_history rows</div>
+      <h2>{{ price_history_total }}</h2>
+    </div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card metric-card"><div class="card-body">
+      <div class="label">eventos</div>
+      <h2>{{ events_total }}</h2>
+      <small class="text-muted">{{ flagged_listings }} listings com flag</small>
+    </div></div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="card"><div class="card-header">Por status</div>
+    <table class="table table-sm mb-0">
+      <tbody>
+      {% for r in statuses %}
+        <tr>
+          <td><span class="status-{{ r['last_status'] }}">{{ r['last_status'] }}</span></td>
+          <td class="text-end">{{ r['n'] }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card"><div class="card-header">Por source</div>
+    <table class="table table-sm mb-0">
+      <tbody>
+      {% for r in sources %}
+        <tr><td class="mono">{{ r['source'] }}</td><td class="text-end">{{ r['n'] }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card"><div class="card-header">Eventos por tipo</div>
+    <table class="table table-sm mb-0">
+      <tbody>
+      {% for r in event_types %}
+        <tr><td class="mono">{{ r['event_type'] }}</td><td class="text-end">{{ r['n'] }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header">Heatmap de preços por keyword (top 25 por contagem)</div>
+  <div class="card-body">
+    <canvas id="heatmap" height="100"></canvas>
+    <p class="text-muted small mb-0 mt-2">
+      Barras = mediana de preço por keyword · linha tracejada = contagem de anúncios (eixo direito)
+    </p>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header">Distribuição de preços (listings ativos)</div>
+  <div class="card-body">
+    <canvas id="priceDist" height="80"></canvas>
+  </div>
+</div>
+
+<script>
+fetch("/api/price_heatmap?min_count=5")
+  .then(r => r.json())
+  .then(data => {
+    const g = (data.groups || []).slice(0, 25);
+    if (!g.length) return;
+    new Chart(document.getElementById("heatmap"), {
+      data: {
+        labels: g.map(x => x.token),
+        datasets: [
+          {
+            type: "bar",
+            label: "mediana de preço",
+            data: g.map(x => x.median),
+            backgroundColor: "rgba(220,53,69,0.4)",
+            borderColor: "rgba(220,53,69,1)",
+            borderWidth: 1,
+            yAxisID: "y",
+          },
+          {
+            type: "line",
+            label: "contagem",
+            data: g.map(x => x.count),
+            borderColor: "rgba(13,110,253,1)",
+            backgroundColor: "rgba(13,110,253,0.1)",
+            borderDash: [5, 4],
+            pointRadius: 3,
+            yAxisID: "y1",
+          }
+        ],
+      },
+      options: {
+        scales: {
+          y:  { beginAtZero: true, position: "left",
+                title: { display: true, text: "preço mediano" } },
+          y1: { beginAtZero: true, position: "right",
+                title: { display: true, text: "contagem" },
+                grid: { drawOnChartArea: false } },
+          x:  { ticks: { font: { size: 10 }, maxRotation: 60, minRotation: 45 } },
+        },
+      },
+    });
+  });
+
+fetch("/api/price_distribution?bins=25")
+  .then(r => r.json())
+  .then(data => {
+    if (!data.labels.length) return;
+    new Chart(document.getElementById("priceDist"), {
+      type: "bar",
+      data: {
+        labels: data.labels,
+        datasets: [{
+          label: "listings",
+          data: data.counts,
+          backgroundColor: "rgba(13,110,253,0.5)",
+          borderColor: "rgba(13,110,253,1)",
+          borderWidth: 1,
+        }],
+      },
+      options: {
+        scales: {
+          x: { ticks: { maxRotation: 60, minRotation: 45, font: { size: 10 } } },
+          y: { beginAtZero: true, title: { display: true, text: "count" } },
+        },
+        plugins: { legend: { display: false } },
+      },
+    });
+  });
+</script>
+{% endblock %}

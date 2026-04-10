@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Top Deals — FB Marketplace Audit{% endblock %}
+{% block content %}
+
+<h3>Top {{ limit }} deals por opportunity_score</h3>
+<p class="text-muted">
+  Calculado por <code>opportunities.score_all_listings()</code>.
+  Score é o somatório de sinais (desconto vs mercado, urgência, descrição curta,
+  idade do anúncio). Desconto vem de <code>market_value.recompute_all()</code>.
+</p>
+
+<div class="table-responsive">
+<table class="table table-sm table-hover align-middle">
+  <thead class="table-light">
+    <tr>
+      <th style="width: 60px">score</th>
+      <th style="width: 110px">ID</th>
+      <th>Título</th>
+      <th class="text-end" style="width: 120px">Preço</th>
+      <th class="text-end" style="width: 120px">Mercado</th>
+      <th class="text-end" style="width: 90px">Desconto</th>
+      <th style="width: 140px">Localização</th>
+      <th style="width: 70px">Cluster</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td>
+        <span class="badge bg-{% if r['opportunity_score'] >= 80 %}danger{% elif r['opportunity_score'] >= 50 %}warning text-dark{% else %}secondary{% endif %}">
+          {{ r['opportunity_score'] }}
+        </span>
+      </td>
+      <td class="mono">{{ r['id'] }}</td>
+      <td><a href="/item/{{ r['id'] }}">{{ r['current_title'] or '(sem título)' }}</a></td>
+      <td class="text-end price">
+        {{ r['current_price'] or '-' }}
+        {% if r['current_currency'] %}<span class="text-muted">{{ r['current_currency'] }}</span>{% endif %}
+      </td>
+      <td class="text-end price text-muted">
+        {% if r['estimated_market_value'] %}
+          {{ "%.0f"|format(r['estimated_market_value']) }}
+        {% else %}-{% endif %}
+      </td>
+      <td class="text-end">
+        {% if r['discount_percentage'] is not none %}
+          {% if r['discount_percentage'] > 30 %}
+            <strong class="text-danger">{{ "%.0f"|format(r['discount_percentage']) }}%</strong>
+          {% elif r['discount_percentage'] > 15 %}
+            <strong class="text-warning">{{ "%.0f"|format(r['discount_percentage']) }}%</strong>
+          {% else %}
+            {{ "%.0f"|format(r['discount_percentage']) }}%
+          {% endif %}
+        {% else %}-{% endif %}
+      </td>
+      <td>{{ r['current_location'] or '-' }}</td>
+      <td class="mono text-muted">{{ r['cluster_id'] or '-' }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="8" class="text-center text-muted p-4">
+      Nenhum listing com score. Rode <code>python monitor.py --from-db --once</code>
+      ou <code>python market_value.py && python opportunities.py</code>.
+    </td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

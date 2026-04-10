@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Outliers{% endblock %}
+{% block content %}
+
+<h3>Outliers de preço</h3>
+<p class="text-muted">
+  Anúncios flagados por <code>outlier_detector.py</code> via IQR dentro do
+  grupo de comparáveis. Baratos demais ou caros demais — ambos podem ser
+  dados ruins. O market_value ignora esses itens ao calcular medianas.
+</p>
+
+<div class="table-responsive">
+<table class="table table-sm table-hover align-middle">
+  <thead class="table-light">
+    <tr>
+      <th style="width: 110px">ID</th>
+      <th>Título</th>
+      <th class="text-end" style="width: 120px">Preço</th>
+      <th class="text-end" style="width: 120px">Estimado</th>
+      <th class="text-end" style="width: 90px">Desconto</th>
+      <th class="text-end" style="width: 70px">Score</th>
+      <th class="text-end" style="width: 70px">Fraud</th>
+      <th style="width: 130px">Localização</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td class="mono">{{ r['id'] }}</td>
+      <td><a href="/item/{{ r['id'] }}">{{ r['current_title'] or '(sem título)' }}</a></td>
+      <td class="text-end price">
+        {{ r['current_price'] or '-' }}
+        {% if r['current_currency'] %}<span class="text-muted">{{ r['current_currency'] }}</span>{% endif %}
+      </td>
+      <td class="text-end text-muted">
+        {% if r['estimated_market_value'] %}{{ "%.0f"|format(r['estimated_market_value']) }}{% else %}-{% endif %}
+      </td>
+      <td class="text-end">
+        {% if r['discount_percentage'] is not none %}
+          {% if r['discount_percentage'] > 60 %}
+            <strong class="text-danger">{{ "%.0f"|format(r['discount_percentage']) }}%</strong>
+          {% elif r['discount_percentage'] < -50 %}
+            <strong class="text-warning">{{ "%.0f"|format(r['discount_percentage']) }}%</strong>
+          {% else %}
+            {{ "%.0f"|format(r['discount_percentage']) }}%
+          {% endif %}
+        {% else %}-{% endif %}
+      </td>
+      <td class="text-end">{{ r['opportunity_score'] or '-' }}</td>
+      <td class="text-end">
+        {% if r['fraud_risk_score'] and r['fraud_risk_score'] >= 50 %}
+          <span class="badge bg-danger">{{ r['fraud_risk_score'] }}</span>
+        {% else %}
+          {{ r['fraud_risk_score'] or '-' }}
+        {% endif %}
+      </td>
+      <td>{{ r['current_location'] or '-' }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="8" class="text-center text-muted p-4">
+      Sem outliers detectados. Rode <code>python outlier_detector.py</code>.
+    </td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

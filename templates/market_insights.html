@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Market Insights{% endblock %}
+{% block content %}
+
+<h3 class="mb-3">Market Insights</h3>
+<p class="text-muted">Visão consolidada: qualidade dos dados, velocidade de mercado e saúde do pipeline de inteligência.</p>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-2">
+    <div class="card metric-card"><div class="card-body">
+      <div class="label">ativos</div><h2>{{ active }}</h2>
+      <small class="text-muted">{{ total }} total</small>
+    </div></div>
+  </div>
+  <div class="col-md-2">
+    <div class="card metric-card"><div class="card-body">
+      <div class="label">outliers</div><h2 class="text-warning">{{ outliers }}</h2>
+      <small class="text-muted">preço suspeito</small>
+    </div></div>
+  </div>
+  <div class="col-md-2">
+    <div class="card metric-card"><div class="card-body">
+      <div class="label">fraud risk ≥ 50</div><h2 class="text-danger">{{ high_fraud }}</h2>
+      <small class="text-muted">alto risco</small>
+    </div></div>
+  </div>
+  <div class="col-md-2">
+    <div class="card metric-card"><div class="card-body">
+      <div class="label">clusters</div><h2>{{ clustered }}</h2>
+      <small class="text-muted">grupos distintos</small>
+    </div></div>
+  </div>
+  <div class="col-md-2">
+    <div class="card metric-card"><div class="card-body">
+      <div class="label">score médio</div><h2>{{ avg_score }}</h2>
+      <small class="text-muted">opportunity_score</small>
+    </div></div>
+  </div>
+  {% if velocity_global %}
+  <div class="col-md-2">
+    <div class="card metric-card"><div class="card-body">
+      <div class="label">dias médios no mercado</div>
+      <h2>{{ "%.1f"|format(velocity_global.median_days) }}</h2>
+      <small class="text-muted">mediana de {{ velocity_global.removed_count }} removidos</small>
+    </div></div>
+  </div>
+  {% endif %}
+</div>
+
+{% if velocity_tokens %}
+<div class="card mb-4">
+  <div class="card-header">Velocidade de venda por keyword (top 15 por volume)</div>
+  <div class="table-responsive">
+  <table class="table table-sm mb-0">
+    <thead class="table-light">
+      <tr>
+        <th>keyword</th>
+        <th class="text-end">removidos</th>
+        <th class="text-end">mediana (d)</th>
+        <th class="text-end">p25 (d)</th>
+        <th class="text-end">p75 (d)</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for s in velocity_tokens %}
+      <tr>
+        <td class="mono">{{ s.scope.replace('token:', '') }}</td>
+        <td class="text-end">{{ s.removed_count }}</td>
+        <td class="text-end">
+          {% if s.median_days < 7 %}<strong class="text-success">{{ "%.1f"|format(s.median_days) }}</strong>
+          {% elif s.median_days < 30 %}{{ "%.1f"|format(s.median_days) }}
+          {% else %}<span class="text-muted">{{ "%.1f"|format(s.median_days) }}</span>{% endif %}
+        </td>
+        <td class="text-end text-muted">{{ "%.1f"|format(s.p25_days) }}</td>
+        <td class="text-end text-muted">{{ "%.1f"|format(s.p75_days) }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% else %}
+<div class="alert alert-info">
+  Ainda sem histórico suficiente de anúncios removidos para calcular velocidade.
+  Isto se popula ao longo do tempo conforme o monitor detecta listings sumindo.
+</div>
+{% endif %}
+
+{% endblock %}

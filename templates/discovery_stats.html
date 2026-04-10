@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}Discovery Stats{% endblock %}
+{% block content %}
+
+<h3>Discovery Stats</h3>
+<p class="text-muted">
+  Cobertura agregada de descoberta. Computado em runtime por
+  <code>discovery_stats.py</code>.
+</p>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-6">
+    <div class="card metric-card"><div class="card-body">
+      <div class="label">Detection rate (últimos {{ report.detection_rate.days }} dias)</div>
+      <h2>{{ report.detection_rate.new_listings }}</h2>
+      <small class="text-muted">
+        novos · {{ report.detection_rate.rate_per_day }} / dia
+        · base total: {{ report.detection_rate.total_listings }}
+      </small>
+    </div></div>
+  </div>
+  <div class="col-md-6">
+    <div class="card metric-card"><div class="card-body">
+      <div class="label">Discovery cache</div>
+      <h2>{{ report.cache_summary.live }}</h2>
+      <small class="text-muted">
+        entradas live · {{ report.cache_summary.expired }} expiradas
+        · total {{ report.cache_summary.total }}
+      </small>
+    </div></div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header">Top keywords (por contagem na base)</div>
+      <div class="table-responsive">
+      <table class="table table-sm mb-0">
+        <thead class="table-light">
+          <tr><th>token</th><th class="text-end">listings</th></tr>
+        </thead>
+        <tbody>
+        {% for r in report.by_keyword %}
+          <tr><td class="mono">{{ r.keyword }}</td><td class="text-end">{{ r.count }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header">Top regiões</div>
+      <div class="table-responsive">
+      <table class="table table-sm mb-0">
+        <thead class="table-light">
+          <tr><th>cidade</th><th>UF</th><th class="text-end">ativos</th></tr>
+        </thead>
+        <tbody>
+        {% for r in report.by_region %}
+          <tr>
+            <td>{{ r.city }}</td>
+            <td class="mono">{{ r.state or '-' }}</td>
+            <td class="text-end">{{ r.active_count }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">Novos por dia</div>
+  <div class="card-body">
+    <canvas id="newPerDay" height="80"></canvas>
+  </div>
+</div>
+
+<script>
+const perDay = {{ report.detection_rate.per_day | tojson }};
+if (perDay.length > 0) {
+  new Chart(document.getElementById("newPerDay"), {
+    type: "bar",
+    data: {
+      labels: perDay.map(p => p.day),
+      datasets: [{
+        label: "novos listings",
+        data: perDay.map(p => p.n),
+        backgroundColor: "rgba(13,110,253,0.4)",
+        borderColor: "rgba(13,110,253,1)",
+        borderWidth: 1,
+      }],
+    },
+    options: {
+      scales: { y: { beginAtZero: true } },
+      plugins: { legend: { display: false } },
+    },
+  });
+}
+</script>
+{% endblock %}

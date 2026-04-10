@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Timeline — {{ listing_id }}{% endblock %}
+{% block content %}
+
+<h3>Timeline do anúncio <small class="text-muted mono">#{{ listing_id }}</small></h3>
+
+{% if listing %}
+  <p>
+    <strong>{{ listing['current_title'] or '(sem título)' }}</strong><br>
+    <span class="text-muted">
+      {{ listing['current_price'] or '-' }} {{ listing['current_currency'] or '' }}
+      {% if listing['city'] %} · {{ listing['city'] }}{% if listing['state'] %}/{{ listing['state'] }}{% endif %}{% endif %}
+      {% if listing['category'] %} · <span class="badge bg-light text-dark">{{ listing['category'] }}</span>{% endif %}
+      {% if listing['repost_count'] %} · <span class="badge bg-warning text-dark">repost×{{ listing['repost_count'] }}</span>{% endif %}
+    </span>
+  </p>
+  <p>
+    <a href="/item/{{ listing_id }}" class="btn btn-sm btn-outline-secondary">← detalhe do listing</a>
+    <a href="{{ listing['url'] }}" class="btn btn-sm btn-outline-primary" target="_blank" rel="noopener">Abrir no FB ↗</a>
+  </p>
+{% endif %}
+
+{% if entries %}
+<div class="card">
+  <ul class="list-group list-group-flush">
+  {% for e in entries %}
+    <li class="list-group-item">
+      <div class="d-flex justify-content-between">
+        <div>
+          <span class="badge bg-{% if e.kind == 'listing_created' %}primary{% elif e.kind == 'removed' %}danger{% elif e.kind == 'reappeared' %}success{% elif e.kind == 'repost_detected' %}warning text-dark{% elif e.kind == 'fresh_opportunity' %}info text-dark{% elif e.kind == 'price_change' %}secondary{% else %}light text-dark{% endif %}">
+            {{ e.kind }}
+          </span>
+          <strong class="ms-2">{{ e.description }}</strong>
+        </div>
+        <small class="mono text-muted">{{ e.at[:19] }}</small>
+      </div>
+      {% if e.details %}
+      <div class="mono text-muted mt-1" style="font-size: 0.8rem">
+        {% for k, v in e.details.items() %}
+          {% if v is not none %}{{ k }}: {{ v }}<br>{% endif %}
+        {% endfor %}
+      </div>
+      {% endif %}
+    </li>
+  {% endfor %}
+  </ul>
+</div>
+<p class="text-muted mt-2">{{ entries|length }} entradas</p>
+{% else %}
+<p class="text-muted">Sem eventos registrados.</p>
+{% endif %}
+{% endblock %}

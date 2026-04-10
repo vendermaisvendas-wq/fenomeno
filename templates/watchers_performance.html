@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Watchers Performance{% endblock %}
+{% block content %}
+
+<h3>Watchers Performance</h3>
+<p class="text-muted">
+  Score dinâmico calculado por <code>watcher_scheduler.py</code>. Combina
+  prioridade estática (P1/P2/P3) com popularidade do (keyword, region),
+  histórico de matches e plano (free/pro/premium). Watchers no topo desta
+  lista rodam <em>primeiro</em> dentro de cada batch paralelo.
+</p>
+
+<div class="table-responsive">
+<table class="table table-sm table-hover align-middle">
+  <thead class="table-light">
+    <tr>
+      <th>#</th>
+      <th>Keyword</th>
+      <th>Região</th>
+      <th class="text-center">P</th>
+      <th class="text-center">Plano</th>
+      <th class="text-end">Compartilhado</th>
+      <th class="text-end">Matches</th>
+      <th class="text-end">Score</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td><a href="/watchers/{{ r.watch_id }}" class="mono">#{{ r.watch_id }}</a></td>
+      <td><strong>{{ r.keyword }}</strong></td>
+      <td>{{ r.region or '-' }}</td>
+      <td class="text-center mono">P{{ r.priority }}</td>
+      <td class="text-center">
+        {% if r.plan == 'premium' %}
+          <span class="badge bg-warning text-dark">premium</span>
+        {% elif r.plan == 'pro' %}
+          <span class="badge bg-info text-dark">pro</span>
+        {% elif r.plan == 'free' %}
+          <span class="badge bg-light text-dark">free</span>
+        {% else %}-{% endif %}
+      </td>
+      <td class="text-end">
+        {% if r.num_users > 1 %}
+          <span class="badge bg-success">×{{ r.num_users }}</span>
+        {% else %}1{% endif %}
+      </td>
+      <td class="text-end">{{ r.match_count }}</td>
+      <td class="text-end">
+        <span class="badge bg-{% if r.dynamic_score >= 100 %}success{% elif r.dynamic_score >= 70 %}primary{% else %}secondary{% endif %}">
+          {{ "%.1f"|format(r.dynamic_score) }}
+        </span>
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="8" class="text-center text-muted p-4">
+      Nenhum watcher cadastrado. Vá em <a href="/watchers">Watchers</a> para criar.
+    </td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

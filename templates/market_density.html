@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Market Density{% endblock %}
+{% block content %}
+
+<h3>Densidade de mercado por token</h3>
+<p class="text-muted">
+  Persistido em <code>market_density</code> por <code>market_density.py</code>.
+  <strong>competition_score</strong> combina volume (log-escala, satura em ~200 ativos)
+  e turnover (<code>removal_rate</code>). Alto score = muita concorrência E alta
+  liquidez; baixo score = nicho raro ou mercado lento.
+</p>
+
+<div class="table-responsive">
+<table class="table table-sm table-hover align-middle">
+  <thead class="table-light">
+    <tr>
+      <th>token</th>
+      <th class="text-end">total</th>
+      <th class="text-end">ativos</th>
+      <th class="text-end">removidos</th>
+      <th class="text-end">rem. rate</th>
+      <th class="text-end">vel. (d)</th>
+      <th class="text-end">competition</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td class="mono">{{ r['token'] }}</td>
+      <td class="text-end">{{ r['total_listings'] }}</td>
+      <td class="text-end">{{ r['active_listings'] }}</td>
+      <td class="text-end">{{ r['removed_listings'] }}</td>
+      <td class="text-end">{{ "%.2f"|format(r['removal_rate']) }}</td>
+      <td class="text-end">
+        {% if r['avg_velocity_days'] is not none %}
+          {{ "%.1f"|format(r['avg_velocity_days']) }}
+        {% else %}-{% endif %}
+      </td>
+      <td class="text-end">
+        <span class="badge bg-{% if r['competition_score'] >= 75 %}danger{% elif r['competition_score'] >= 50 %}warning text-dark{% else %}success{% endif %}">
+          {{ r['competition_score'] }}
+        </span>
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="7" class="text-center text-muted p-4">
+      Sem dados. Rode <code>python market_density.py</code>.
+    </td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

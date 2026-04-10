@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Discovery Network{% endblock %}
+{% block content %}
+
+<h3>Discovery Network</h3>
+<p class="text-muted">
+  Grafo de queries gerado por <code>marketplace_deep_discovery.py</code>.
+  Cada anúncio descoberto pode gerar queries derivadas (via
+  <code>related_listing_finder</code>), formando uma árvore BFS de descoberta.
+</p>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="card metric-card"><div class="card-body">
+      <div class="label">edges totais</div><h2>{{ summary.total_edges }}</h2>
+    </div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card metric-card"><div class="card-body">
+      <div class="label">queries seed</div><h2>{{ summary.roots }}</h2>
+    </div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card metric-card"><div class="card-body">
+      <div class="label">profundidade máx</div><h2>{{ summary.max_depth }}</h2>
+    </div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card metric-card"><div class="card-body">
+      <div class="label">por profundidade</div>
+      <ul class="list-unstyled mb-0 mt-2">
+      {% for d in summary.by_depth %}
+        <li>depth {{ d.depth }}: <strong>{{ d.n }}</strong></li>
+      {% else %}
+        <li class="text-muted">(vazio)</li>
+      {% endfor %}
+      </ul>
+    </div></div>
+  </div>
+</div>
+
+<h5>Árvores de descoberta (top 30 raízes)</h5>
+{% for exp in expansions %}
+  <div class="card mb-2">
+    <div class="card-body py-2">
+      <strong class="mono">{{ exp.root.child_query }}</strong>
+      <small class="text-muted ms-2">depth 0 · {{ exp.root.created_at[:19] }}</small>
+      {% if exp.children %}
+      <ul class="mb-0 mt-1 small">
+      {% for c in exp.children %}
+        <li>
+          <span class="mono">{{ c.child_query }}</span>
+          <span class="text-muted">depth {{ c.depth }}</span>
+          {% if c.source_listing_id %}
+            <small class="text-muted">via listing {{ c.source_listing_id }}</small>
+          {% endif %}
+        </li>
+      {% endfor %}
+      </ul>
+      {% else %}
+        <span class="text-muted small ms-2">(sem expansão)</span>
+      {% endif %}
+    </div>
+  </div>
+{% else %}
+  <div class="alert alert-info">
+    Discovery graph vazio. Rode
+    <code>python marketplace_deep_discovery.py iphone --region "São Paulo"</code>
+    para popular.
+  </div>
+{% endfor %}
+{% endblock %}
