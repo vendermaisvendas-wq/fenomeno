@@ -48,13 +48,6 @@ def _t(name: str, ctx: dict):
 def startup():
     from db import init_db
     init_db()
-    # Limpa listings "pending" de seeds/testes anteriores que nunca foram validados
-    with connect() as conn:
-        removed = conn.execute(
-            "DELETE FROM listings WHERE last_status = 'pending' AND source IN ('seed', 'test-discovery', 'watcher', 'discovery')"
-        ).rowcount
-        if removed:
-            print(f"[startup] removidos {removed} listings pendentes de testes anteriores")
 
 
 @app.get("/health")
@@ -261,53 +254,77 @@ def _render_debug(request, keyword, region, limit, steps, validated, rejected, i
     ))
 
 
-@app.get("/debug-error")
-def debug_error():
-    """Testa se o template e o DB funcionam."""
+@app.get("/debug-pipeline")
+def debug_pipeline():
+    """Diagnóstico JSON rápido de todos os componentes."""
     import traceback
-    errors = []
-    try:
-        from db import init_db
-        init_db()
-        errors.append("db.init_db: OK")
-    except Exception as e:
-        errors.append(f"db.init_db: FAIL - {traceback.format_exc()}")
+    checks = {}
+    # DB
     try:
         with connect() as conn:
-            n = conn.execute("SELECT COUNT(*) FROM listings").fetchone()[0]
-            errors.append(f"db.query: OK (listings={n})")
+            checks["banco"] = {
+                "listings": conn.execute("SELECT COUNT(*) FROM listings").fetchone()[0],
+                "listings_ok": conn.execute("SELECT COUNT(*) FROM listings WHERE last_status='ok'").fetchone()[0],
+                "watchers": conn.execute("SELECT COUNT(*) FROM watchers").fetchone()[0],
+                "watcher_results": conn.execute("SELECT COUNT(*) FROM watcher_results").fetchone()[0],
+                "events": conn.execute("SELECT COUNT(*) FROM events").fetchone()[0],
+            }
     except Exception as e:
-        errors.append(f"db.query: FAIL - {traceback.format_exc()}")
+        checks["banco"] = f"ERRO: {e}"
+    # DDG
     try:
-        from pathlib import Path as P
-        tdir = P(__file__).parent / "templates"
-        files = list(tdir.glob("*.html"))
-        errors.append(f"templates dir: {tdir} ({len(files)} files)")
+        from ddgs import DDGS
+        r = DDGS().text("site:facebook.com/marketplace/item teste", max_results=3)
+        checks["ddg"] = f"OK ({len(r)} resultados)"
     except Exception as e:
-        errors.append(f"templates: FAIL - {traceback.format_exc()}")
+        checks["ddg"] = f"ERRO: {e}"
+    # Extract
     try:
-        tpl = templates.env.get_template("index.html")
-        tpl.render({"request": None, "rows": [], "total": 0, "removed": 0})
-        errors.append("template render: OK")
+        from extract_item import extract
+        checks["extract"] = "modulo importado OK"
     except Exception as e:
-        errors.append(f"template render: {type(e).__name__}: {e}")
-    return JSONResponse({"checks": errors})
+        checks["extract"] = f"ERRO: {e}"
+    # Templates
+    try:
+        n = len(list((Path(__file__).parent / "templates").glob("*.html")))
+        checks["templates"] = f"OK ({n} arquivos)"
+    except Exception as e:
+        checks["templates"] = f"ERRO: {e}"
+    return JSONResponse(checks)
 
 
-# Mostra traceback real em caso de erro 500
-from fastapi.responses import PlainTextResponse
-from starlette.middleware.base import BaseHTTPMiddleware
-
-class DebugMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request, call_next):
-        try:
-            return await call_next(request)
-        except Exception as e:
-            import traceback
-            tb = traceback.format_exc()
-            return PlainTextResponse(f"500 Internal Server Error\n\n{tb}", status_code=500)
-
-app.add_middleware(DebugMiddleware)
+@app.get("/debug-watchers")
+def debug_watchers():
+    """Status JSON de cada watcher."""
+    with connect() as conn:
+        watchers = conn.execute(
+            """SELECT w.watch_id, w.keyword, w.region, w.is_active, w.last_run_at,
+                  (SELECT COUNT(*) FROM watcher_results wr WHERE wr.watch_id = w.watch_id) as matches
+             FROM watchers w ORDER BY w.watch_id"""
+        ).fetchall()
+        result = []
+        for w in watchers:
+            last_matches = conn.execute(
+                """SELECT wr.listing_id, l.current_title, l.current_price
+                  FROM watcher_results wr
+                  LEFT JOIN listings l ON l.id = wr.listing_id
+                  WHERE wr.watch_id = ? ORDER BY wr.first_seen DESC LIMIT 5""",
+                (w["watch_id"],)
+            ).fetchall()
+            result.append({
+                "watch_id": w["watch_id"],
+                "keyword": w["keyword"],
+                "region": w["region"],
+                "active": bool(w["is_active"]),
+                "last_run": w["last_run_at"],
+                "total_matches": w["matches"],
+                "recent_matches": [
+                    {"id": m["listing_id"], "title": m["current_title"],
+                     "price": m["current_price"]}
+                    for m in last_matches
+                ],
+            })
+    return JSONResponse(result)
 
 
 @app.get("/system-status", response_class=HTMLResponse)
