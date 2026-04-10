@@ -233,6 +233,46 @@ def _insert_result(
     )
 
 
+def _persist_listing(conn, listing: Listing) -> None:
+    """Insere ou atualiza o listing na tabela `listings` a partir dos dados
+    extraídos. Sem isso, watcher_results tem o ID mas o JOIN com listings
+    retorna vazio e o dashboard não mostra nada."""
+    now = now_iso()
+    existing = conn.execute(
+        "SELECT id FROM listings WHERE id = ?", (listing.id,)
+    ).fetchone()
+    if existing is None:
+        conn.execute(
+            """
+            INSERT INTO listings
+              (id, url, source, first_seen_at, last_seen_at, last_status,
+               current_title, current_price, current_currency, current_location,
+               current_seller)
+            VALUES (?, ?, 'watcher', ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (listing.id, listing.url, now, now, listing.status,
+             listing.title, listing.price_amount or listing.price_formatted,
+             listing.price_currency, listing.location_text,
+             listing.seller_name),
+        )
+    else:
+        conn.execute(
+            """
+            UPDATE listings
+               SET last_seen_at = ?,
+                   last_status = ?,
+                   current_title = COALESCE(?, current_title),
+                   current_price = COALESCE(?, current_price),
+                   current_currency = COALESCE(?, current_currency),
+                   current_location = COALESCE(?, current_location)
+             WHERE id = ?
+            """,
+            (now, listing.status, listing.title,
+             listing.price_amount or listing.price_formatted,
+             listing.price_currency, listing.location_text, listing.id),
+        )
+
+
 def _touch_watcher(conn, watch_id: int) -> None:
     conn.execute(
         "UPDATE watchers SET last_run_at = ? WHERE watch_id = ?",
@@ -272,6 +312,7 @@ def run_backfill(watch_id: int, max_pages: int = DEFAULT_MAX_PAGES_BACKFILL) -> 
             continue
 
         with connect() as conn:
+            _persist_listing(conn, listing)
             _insert_result(conn, watch_id, listing.id, is_backfill=True)
         stats["matched"] += 1
         log.info(kv(watch_id=watch_id, listing=listing.id, event="backfill_match"))
@@ -315,6 +356,7 @@ def monitor_watch(watch_id: int, max_pages: int = DEFAULT_MAX_PAGES_MONITOR) -> 
             continue
 
         with connect() as conn:
+            _persist_listing(conn, listing)
             _insert_result(conn, watch_id, listing.id, is_backfill=False)
             insert_event(
                 conn, listing.id, now_iso(), "watcher_match",
