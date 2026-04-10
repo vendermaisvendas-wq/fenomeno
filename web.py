@@ -36,6 +36,12 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 app = FastAPI(title="FB Marketplace Audit")
 
 
+def _t(name: str, ctx: dict):
+    """Wrapper TemplateResponse compatível com Starlette novo e antigo."""
+    request = ctx.get("request")
+    return templates.TemplateResponse(request=request, name=name, context=ctx)
+
+
 @app.on_event("startup")
 def startup():
     from db import init_db
@@ -115,7 +121,7 @@ def index(request: Request):
         removed = conn.execute(
             "SELECT COUNT(*) FROM listings WHERE is_removed = 1"
         ).fetchone()[0]
-    return templates.TemplateResponse(
+    return _t(
         "index.html",
         {"request": request, "rows": rows, "total": total, "removed": removed},
     )
@@ -139,7 +145,7 @@ def item_detail(item_id: str, request: Request):
         except Exception:
             continue
 
-    return templates.TemplateResponse(
+    return _t(
         "item.html",
         {
             "request": request,
@@ -173,7 +179,7 @@ def explorer(request: Request, q: str = Query("")):
             ).fetchall()
         else:
             rows = []
-    return templates.TemplateResponse(
+    return _t(
         "explorer.html", {"request": request, "rows": rows, "q": q},
     )
 
@@ -206,7 +212,7 @@ def stats_page(request: Request):
             "WHERE event_type = 'opportunity_flag'"
         ).fetchone()[0]
 
-    return templates.TemplateResponse(
+    return _t(
         "stats.html",
         {
             "request": request,
@@ -259,7 +265,7 @@ def opportunities_page(request: Request, rule: str = Query("")):
             ORDER BY n DESC
             """
         ).fetchall()
-    return templates.TemplateResponse(
+    return _t(
         "opportunities.html",
         {"request": request, "rows": rows, "rule_counts": rule_counts, "rule": rule},
     )
@@ -314,7 +320,7 @@ def top_deals(request: Request, limit: int = Query(50, ge=1, le=200)):
             """,
             (limit,),
         ).fetchall()
-    return templates.TemplateResponse(
+    return _t(
         "top_deals.html",
         {"request": request, "rows": rows, "limit": limit},
     )
@@ -368,7 +374,7 @@ def market_insights(request: Request):
     global_velocity = compute_global()
     top_tokens = compute_by_token(limit=15)
 
-    return templates.TemplateResponse(
+    return _t(
         "market_insights.html",
         {
             "request": request,
@@ -383,7 +389,7 @@ def market_insights(request: Request):
 
 @app.get("/price-trends", response_class=HTMLResponse)
 def price_trends(request: Request):
-    return templates.TemplateResponse(
+    return _t(
         "price_trends.html", {"request": request}
     )
 
@@ -403,7 +409,7 @@ def liquidity_page(request: Request, limit: int = Query(100, ge=1, le=500)):
             """,
             (limit,),
         ).fetchall()
-    return templates.TemplateResponse(
+    return _t(
         "liquidity.html", {"request": request, "rows": rows},
     )
 
@@ -425,7 +431,7 @@ def predicted_price_page(request: Request, limit: int = Query(100, ge=1, le=500)
             """,
             (limit,),
         ).fetchall()
-    return templates.TemplateResponse(
+    return _t(
         "predicted_price.html", {"request": request, "rows": rows},
     )
 
@@ -444,7 +450,7 @@ def sellers_page(request: Request, limit: int = Query(50, ge=1, le=500)):
             """,
             (limit,),
         ).fetchall()
-    return templates.TemplateResponse(
+    return _t(
         "sellers.html", {"request": request, "rows": rows},
     )
 
@@ -465,7 +471,7 @@ def outliers_page(request: Request):
              LIMIT 200
             """
         ).fetchall()
-    return templates.TemplateResponse(
+    return _t(
         "outliers.html", {"request": request, "rows": rows},
     )
 
@@ -516,7 +522,7 @@ def geo_insights_page(request: Request):
     top_vol = top_cities_by_volume(25)
     top_disc = top_cities_by_discount(25)
     states = by_state()
-    return templates.TemplateResponse(
+    return _t(
         "geo_insights.html",
         {
             "request": request,
@@ -533,7 +539,7 @@ def listing_timeline_page(listing_id: str, request: Request):
     entries = build_timeline(listing_id)
     with connect() as conn:
         listing = listing_by_id(conn, listing_id)
-    return templates.TemplateResponse(
+    return _t(
         "listing_timeline.html",
         {"request": request, "entries": entries, "listing": listing,
          "listing_id": listing_id},
@@ -558,7 +564,7 @@ def fresh_deals_page(request: Request, limit: int = Query(100, ge=1, le=500)):
             """,
             (limit,),
         ).fetchall()
-    return templates.TemplateResponse(
+    return _t(
         "fresh_deals.html", {"request": request, "rows": rows},
     )
 
@@ -576,7 +582,7 @@ def market_density_page(request: Request, limit: int = Query(100, ge=1, le=500))
             """,
             (limit,),
         ).fetchall()
-    return templates.TemplateResponse(
+    return _t(
         "market_density.html", {"request": request, "rows": rows},
     )
 
@@ -597,7 +603,7 @@ def watchers_page(request: Request):
              ORDER BY w.is_active DESC, w.watch_id DESC
             """
         ).fetchall()
-    return templates.TemplateResponse(
+    return _t(
         "watchers.html", {"request": request, "rows": rows},
     )
 
@@ -694,7 +700,7 @@ def watcher_detail(watch_id: int, request: Request):
             """,
             (watch_id,),
         ).fetchall()
-    return templates.TemplateResponse(
+    return _t(
         "watcher_detail.html",
         {"request": request, "watcher": watcher, "results": results},
     )
@@ -735,7 +741,7 @@ def watcher_insights_page(request: Request):
         from watcher_optimizer import find_popular_groups
         popular = find_popular_groups(min_users=2)
 
-    return templates.TemplateResponse(
+    return _t(
         "watcher_insights.html",
         {
             "request": request,
@@ -751,7 +757,7 @@ def watcher_insights_page(request: Request):
 def discovery_stats_page(request: Request):
     from discovery_stats import build_report
     report = build_report(top=25, days=14)
-    return templates.TemplateResponse(
+    return _t(
         "discovery_stats.html",
         {"request": request, "report": report},
     )
@@ -782,7 +788,7 @@ def top_opportunities_page(request: Request, limit: int = Query(100, ge=1, le=50
             """,
             (limit,),
         ).fetchall()
-    return templates.TemplateResponse(
+    return _t(
         "top_opportunities.html", {"request": request, "rows": rows},
     )
 
@@ -796,7 +802,7 @@ def discovery_network_page(request: Request):
     for root in roots:
         children = edges_from(parent=root["child_query"], limit=10)
         expansions.append({"root": root, "children": children})
-    return templates.TemplateResponse(
+    return _t(
         "discovery_network.html",
         {"request": request, "summary": summary, "expansions": expansions},
     )
@@ -806,7 +812,7 @@ def discovery_network_page(request: Request):
 def watchers_performance_page(request: Request):
     from watcher_scheduler import debug as scheduler_debug
     rows = scheduler_debug()
-    return templates.TemplateResponse(
+    return _t(
         "watchers_performance.html",
         {"request": request, "rows": rows},
     )
