@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Listings — FB Marketplace Audit{% endblock %}
+{% block title %}Anúncios — BuscaPlace{% endblock %}
 {% block content %}
 <div class="d-flex align-items-baseline mb-3">
-    <h3 class="me-3">Listings monitorados</h3>
+    <h3 class="me-3">Anúncios monitorados</h3>
     <span class="text-muted">
         total: {{ total }} · removidos: {{ removed }} · mostrando últimos {{ rows|length }}
     </span>
@@ -17,7 +17,7 @@
             <th class="text-end" style="width: 120px">Preço</th>
             <th style="width: 140px">Localização</th>
             <th style="width: 100px">Status</th>
-            <th style="width: 160px">Last seen</th>
+            <th style="width: 160px">Última vez</th>
             <th style="width: 90px"></th>
         </tr>
     </thead>
@@ -25,9 +25,7 @@
     {% for r in rows %}
         <tr class="{% if r['is_removed'] %}table-secondary{% endif %}">
             <td class="mono">{{ r['id'] }}</td>
-            <td>
-                <a href="/item/{{ r['id'] }}">{{ r['current_title'] or '(sem título)' }}</a>
-            </td>
+            <td><a href="/item/{{ r['id'] }}">{{ r['current_title'] or '(sem título)' }}</a></td>
             <td class="text-end price">
                 {{ r['current_price'] or '-' }}
                 {% if r['current_currency'] %}<span class="text-muted">{{ r['current_currency'] }}</span>{% endif %}
@@ -35,12 +33,12 @@
             <td>{{ r['current_location'] or '-' }}</td>
             <td><span class="status-{{ r['last_status'] }}">{{ r['last_status'] }}</span></td>
             <td class="mono text-muted">{{ r['last_seen_at'] }}</td>
-            <td>
-                <a class="btn btn-sm btn-outline-secondary" href="{{ r['url'] }}" target="_blank" rel="noopener">FB↗</a>
-            </td>
+            <td><a class="btn btn-sm btn-outline-secondary" href="{{ r['url'] }}" target="_blank">FB↗</a></td>
         </tr>
     {% else %}
-        <tr><td colspan="7" class="text-center text-muted p-4">Nenhum listing ainda — rode <code>discover_links.py</code> ou <code>monitor.py --seed</code>.</td></tr>
+        <tr><td colspan="7" class="text-center text-muted p-4">
+          Nenhum anúncio ainda. Crie um monitoramento em <a href="/watchers">Monitoramentos</a> ou rode <code>python discover_links.py iphone</code>.
+        </td></tr>
     {% endfor %}
     </tbody>
 </table>

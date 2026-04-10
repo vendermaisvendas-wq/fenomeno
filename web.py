@@ -104,6 +104,79 @@ class DebugMiddleware(BaseHTTPMiddleware):
 app.add_middleware(DebugMiddleware)
 
 
+@app.get("/system-status", response_class=HTMLResponse)
+def system_status_page(request: Request):
+    with connect() as conn:
+        listings_total = conn.execute("SELECT COUNT(*) FROM listings").fetchone()[0]
+        listings_active = conn.execute(
+            "SELECT COUNT(*) FROM listings WHERE is_removed = 0"
+        ).fetchone()[0]
+        watchers_total = conn.execute("SELECT COUNT(*) FROM watchers").fetchone()[0]
+        watchers_active = conn.execute(
+            "SELECT COUNT(*) FROM watchers WHERE is_active = 1"
+        ).fetchone()[0]
+        events_total = conn.execute("SELECT COUNT(*) FROM events").fetchone()[0]
+        alerts_total = conn.execute(
+            "SELECT COUNT(*) FROM events WHERE event_type = 'alert_sent'"
+        ).fetchone()[0]
+        watcher_matches = conn.execute(
+            "SELECT COUNT(*) FROM events WHERE event_type = 'watcher_match'"
+        ).fetchone()[0]
+        last_event = conn.execute(
+            "SELECT at FROM events ORDER BY at DESC LIMIT 1"
+        ).fetchone()
+        last_event_at = last_event["at"] if last_event else "nenhum"
+        watcher_results = conn.execute(
+            "SELECT COUNT(*) FROM watcher_results"
+        ).fetchone()[0]
+        snapshots = conn.execute("SELECT COUNT(*) FROM snapshots").fetchone()[0]
+
+    html = f"""
+    {{% extends "base.html" %}}
+    {{% block title %}}Status do Sistema{{% endblock %}}
+    {{% block content %}}
+    <h3>Status do Sistema</h3>
+    <div class="row g-3 mb-4">
+      <div class="col-md-3"><div class="card metric-card"><div class="card-body">
+        <div class="label">Anúncios</div><h2>{listings_total}</h2>
+        <small class="text-muted">{listings_active} ativos</small>
+      </div></div></div>
+      <div class="col-md-3"><div class="card metric-card"><div class="card-body">
+        <div class="label">Monitoramentos</div><h2>{watchers_total}</h2>
+        <small class="text-muted">{watchers_active} ativos</small>
+      </div></div></div>
+      <div class="col-md-3"><div class="card metric-card"><div class="card-body">
+        <div class="label">Alertas enviados</div><h2>{alerts_total}</h2>
+        <small class="text-muted">{watcher_matches} matches de watcher</small>
+      </div></div></div>
+      <div class="col-md-3"><div class="card metric-card"><div class="card-body">
+        <div class="label">Último evento</div>
+        <h2 style="font-size:1rem">{last_event_at[:19] if len(last_event_at) > 19 else last_event_at}</h2>
+      </div></div></div>
+    </div>
+    <div class="card">
+      <div class="card-header">Detalhes</div>
+      <table class="table table-sm mb-0">
+        <tr><td>Anúncios no banco</td><td class="text-end"><strong>{listings_total}</strong></td></tr>
+        <tr><td>Anúncios ativos</td><td class="text-end">{listings_active}</td></tr>
+        <tr><td>Snapshots</td><td class="text-end">{snapshots}</td></tr>
+        <tr><td>Eventos totais</td><td class="text-end">{events_total}</td></tr>
+        <tr><td>Matches de watcher</td><td class="text-end">{watcher_matches}</td></tr>
+        <tr><td>Alertas enviados</td><td class="text-end">{alerts_total}</td></tr>
+        <tr><td>Resultados de watcher</td><td class="text-end">{watcher_results}</td></tr>
+        <tr><td>Monitoramentos total</td><td class="text-end">{watchers_total}</td></tr>
+        <tr><td>Monitoramentos ativos</td><td class="text-end">{watchers_active}</td></tr>
+      </table>
+    </div>
+    {{% endblock %}}
+    """
+    # Render inline template (sem arquivo separado)
+    from jinja2 import Environment
+    env = templates.env
+    tpl = env.from_string(html)
+    return HTMLResponse(tpl.render(request=request))
+
+
 # --- páginas HTML ----------------------------------------------------------
 
 @app.get("/", response_class=HTMLResponse)

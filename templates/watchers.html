@@ -1,66 +1,58 @@
 {% extends "base.html" %}
-{% block title %}Watchers{% endblock %}
+{% block title %}Monitoramentos — BuscaPlace{% endblock %}
 {% block content %}
 
-<h3>Watchers</h3>
+<h3>Monitoramentos</h3>
 <p class="text-muted">
-  Monitoramento de (palavra-chave, região) no Marketplace. Backfill inicial
-  é silencioso; passadas subsequentes detectam anúncios novos e disparam alertas
-  via <code>alert_engine.py</code>.
+  Monitore uma palavra-chave + região no Marketplace. O sistema descobre anúncios
+  existentes (backfill silencioso) e alerta quando novos aparecerem.
 </p>
 
-<div class="alert alert-warning small">
-  <strong>Sobre latência:</strong> descoberta usa DuckDuckGo via <code>discover_links</code>,
-  que reindex do FB leva minutos a horas. Rate limit conservador (~4s entre extracts)
-  evita que o FB nos bloqueie. Consequência: "alerta rápido" = próxima passada do monitor,
-  não tempo real. Documentado na seção 28 do AUDIT_REPORT.
-</div>
-
 <div class="card mb-4">
-  <div class="card-header">Criar watcher</div>
+  <div class="card-header">Criar monitoramento</div>
   <div class="card-body">
     <form method="post" action="/watchers" class="row g-2 align-items-end">
       <div class="col-md-3">
-        <label class="form-label">Keyword</label>
-        <input type="text" name="keyword" class="form-control" placeholder="iphone" required>
+        <label class="form-label">Palavra-chave</label>
+        <input type="text" name="keyword" class="form-control" placeholder="ex: iphone" required>
       </div>
       <div class="col-md-2">
         <label class="form-label">Região</label>
-        <input type="text" name="region" class="form-control" placeholder="Araçatuba">
+        <input type="text" name="region" class="form-control" placeholder="ex: Araçatuba">
       </div>
       <div class="col-md-2">
-        <label class="form-label">Min R$</label>
+        <label class="form-label">Preço mínimo</label>
         <input type="number" step="0.01" name="min_price" class="form-control" placeholder="opcional">
       </div>
       <div class="col-md-2">
-        <label class="form-label">Max R$</label>
+        <label class="form-label">Preço máximo</label>
         <input type="number" step="0.01" name="max_price" class="form-control" placeholder="opcional">
       </div>
       <div class="col-md-2">
         <div class="form-check">
-          <input type="checkbox" name="backfill" value="1" class="form-check-input" id="backfillCheck" checked>
-          <label class="form-check-label" for="backfillCheck">rodar backfill</label>
+          <input type="checkbox" name="backfill" value="1" class="form-check-input" id="bfCheck" checked>
+          <label class="form-check-label" for="bfCheck">buscar existentes</label>
         </div>
-        <button type="submit" class="btn btn-primary btn-sm">Criar</button>
+        <button type="submit" class="btn btn-primary btn-sm mt-1">Criar</button>
       </div>
     </form>
   </div>
 </div>
 
-<h5>Ativos e pausados</h5>
+<h5>Lista de monitoramentos</h5>
 <div class="table-responsive">
 <table class="table table-sm table-hover align-middle">
   <thead class="table-light">
     <tr>
       <th>#</th>
-      <th>Keyword</th>
+      <th>Palavra-chave</th>
       <th>Região</th>
-      <th class="text-end">Min</th>
-      <th class="text-end">Max</th>
+      <th class="text-end">Mín</th>
+      <th class="text-end">Máx</th>
       <th class="text-center">Ativo</th>
-      <th class="text-end">Matches</th>
+      <th class="text-end">Total</th>
       <th class="text-end">Novos</th>
-      <th>Last run</th>
+      <th>Última exec.</th>
       <th>Ações</th>
     </tr>
   </thead>
@@ -73,34 +65,33 @@
       <td class="text-end">{% if w['min_price'] %}{{ "%.0f"|format(w['min_price']) }}{% else %}-{% endif %}</td>
       <td class="text-end">{% if w['max_price'] %}{{ "%.0f"|format(w['max_price']) }}{% else %}-{% endif %}</td>
       <td class="text-center">
-        {% if w['is_active'] %}<span class="badge bg-success">on</span>{% else %}<span class="badge bg-secondary">off</span>{% endif %}
+        {% if w['is_active'] %}<span class="badge bg-success">sim</span>{% else %}<span class="badge bg-secondary">não</span>{% endif %}
       </td>
       <td class="text-end">{{ w['total_matches'] }}</td>
       <td class="text-end">
-        {% if w['new_matches'] > 0 %}
-          <span class="badge bg-warning text-dark">{{ w['new_matches'] }}</span>
+        {% if w['new_matches'] > 0 %}<span class="badge bg-warning text-dark">{{ w['new_matches'] }}</span>
         {% else %}{{ w['new_matches'] }}{% endif %}
       </td>
-      <td class="mono text-muted small">{{ (w['last_run_at'] or 'never')[:19] }}</td>
+      <td class="mono text-muted small">{{ (w['last_run_at'] or 'nunca')[:19] }}</td>
       <td>
         <form method="post" action="/watchers/{{ w['watch_id'] }}/toggle" style="display:inline">
-          <button type="submit" class="btn btn-sm btn-outline-secondary" title="toggle">{% if w['is_active'] %}pausar{% else %}ativar{% endif %}</button>
+          <button type="submit" class="btn btn-sm btn-outline-secondary">{% if w['is_active'] %}pausar{% else %}ativar{% endif %}</button>
         </form>
         <form method="post" action="/watchers/{{ w['watch_id'] }}/monitor" style="display:inline">
-          <button type="submit" class="btn btn-sm btn-outline-primary" title="monitor agora">▶ monitor</button>
+          <button type="submit" class="btn btn-sm btn-outline-primary">▶ buscar</button>
         </form>
         <form method="post" action="/watchers/{{ w['watch_id'] }}/backfill" style="display:inline">
-          <button type="submit" class="btn btn-sm btn-outline-info" title="rerodar backfill">↻ backfill</button>
+          <button type="submit" class="btn btn-sm btn-outline-info">↻ refazer</button>
         </form>
         <form method="post" action="/watchers/{{ w['watch_id'] }}/delete" style="display:inline"
-              onsubmit="return confirm('Apagar watcher #{{ w['watch_id'] }} e todos os resultados?')">
-          <button type="submit" class="btn btn-sm btn-outline-danger" title="delete">✕</button>
+              onsubmit="return confirm('Apagar monitoramento #{{ w['watch_id'] }} e todos os resultados?')">
+          <button type="submit" class="btn btn-sm btn-outline-danger">✕</button>
         </form>
       </td>
     </tr>
   {% else %}
     <tr><td colspan="10" class="text-center text-muted p-4">
-      Nenhum watcher ainda. Use o formulário acima para criar o primeiro.
+      Nenhum monitoramento criado. Use o formulário acima.
     </td></tr>
   {% endfor %}
   </tbody>

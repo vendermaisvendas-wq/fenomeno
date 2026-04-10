@@ -1,46 +1,41 @@
 {% extends "base.html" %}
-{% block title %}Watcher #{{ watcher['watch_id'] }}{% endblock %}
+{% block title %}Monitoramento #{{ watcher['watch_id'] }}{% endblock %}
 {% block content %}
 
 <div class="d-flex align-items-baseline mb-3">
-  <h3 class="me-3">Watcher #{{ watcher['watch_id'] }}</h3>
-  <a href="/watchers" class="btn btn-sm btn-outline-secondary">← todos</a>
+  <h3 class="me-3">Monitoramento #{{ watcher['watch_id'] }}</h3>
+  <a href="/watchers" class="btn btn-sm btn-outline-secondary">← voltar</a>
 </div>
 
 <div class="card mb-3">
   <div class="card-body">
     <dl class="row mb-0">
-      <dt class="col-sm-2">Keyword</dt>
+      <dt class="col-sm-2">Palavra-chave</dt>
       <dd class="col-sm-4"><strong>{{ watcher['keyword'] }}</strong></dd>
-
       <dt class="col-sm-2">Região</dt>
       <dd class="col-sm-4">{{ watcher['region'] or '(qualquer)' }}</dd>
-
       <dt class="col-sm-2">Faixa de preço</dt>
       <dd class="col-sm-4">
         {% if watcher['min_price'] %}R$ {{ "%.0f"|format(watcher['min_price']) }}{% else %}-{% endif %}
         até
         {% if watcher['max_price'] %}R$ {{ "%.0f"|format(watcher['max_price']) }}{% else %}-{% endif %}
       </dd>
-
       <dt class="col-sm-2">Status</dt>
       <dd class="col-sm-4">
         {% if watcher['is_active'] %}<span class="badge bg-success">ativo</span>{% else %}<span class="badge bg-secondary">pausado</span>{% endif %}
       </dd>
-
       <dt class="col-sm-2">Criado em</dt>
       <dd class="col-sm-4 mono small">{{ watcher['created_at'] }}</dd>
-
-      <dt class="col-sm-2">Last run</dt>
-      <dd class="col-sm-4 mono small">{{ watcher['last_run_at'] or 'nunca rodou' }}</dd>
+      <dt class="col-sm-2">Última execução</dt>
+      <dd class="col-sm-4 mono small">{{ watcher['last_run_at'] or 'nunca executou' }}</dd>
     </dl>
   </div>
   <div class="card-footer">
     <form method="post" action="/watchers/{{ watcher['watch_id'] }}/monitor" style="display:inline">
-      <button class="btn btn-sm btn-primary">▶ rodar monitor agora</button>
+      <button class="btn btn-sm btn-primary">▶ buscar agora</button>
     </form>
     <form method="post" action="/watchers/{{ watcher['watch_id'] }}/backfill" style="display:inline">
-      <button class="btn btn-sm btn-outline-info">↻ rerodar backfill</button>
+      <button class="btn btn-sm btn-outline-info">↻ refazer busca inicial</button>
     </form>
     <form method="post" action="/watchers/{{ watcher['watch_id'] }}/toggle" style="display:inline">
       <button class="btn btn-sm btn-outline-secondary">{% if watcher['is_active'] %}pausar{% else %}ativar{% endif %}</button>
@@ -50,22 +45,22 @@
 
 <h5>Anúncios encontrados ({{ results|length }})</h5>
 <p class="text-muted small">
-  Linhas com fundo amarelo são <strong>novos matches</strong> (pós-backfill).
-  Cinza é do backfill inicial — silenciosos, sem alerta.
+  Linhas amarelas = <strong>novos</strong> (detectados após a busca inicial, geram alerta).
+  Cinza = busca inicial (silenciosos, sem alerta).
 </p>
 
 <div class="table-responsive">
 <table class="table table-sm table-hover align-middle">
   <thead class="table-light">
     <tr>
-      <th>tipo</th>
+      <th>Tipo</th>
       <th>ID</th>
       <th>Título</th>
       <th class="text-end">Preço</th>
       <th>Local</th>
       <th class="text-end">Score</th>
-      <th class="text-end">Desc</th>
-      <th>First seen no watcher</th>
+      <th class="text-end">Desc.</th>
+      <th>Detectado em</th>
       <th>Status</th>
     </tr>
   </thead>
@@ -73,19 +68,13 @@
   {% for r in results %}
     <tr class="{% if r['is_initial_backfill'] %}table-secondary{% else %}table-warning{% endif %}">
       <td>
-        {% if r['is_initial_backfill'] %}
-          <span class="badge bg-secondary">backfill</span>
-        {% else %}
-          <span class="badge bg-warning text-dark">NEW</span>
-        {% endif %}
+        {% if r['is_initial_backfill'] %}<span class="badge bg-secondary">inicial</span>
+        {% else %}<span class="badge bg-warning text-dark">NOVO</span>{% endif %}
       </td>
       <td class="mono">{{ r['listing_id'] }}</td>
       <td>
-        {% if r['current_title'] %}
-          <a href="/item/{{ r['listing_id'] }}">{{ r['current_title'] }}</a>
-        {% else %}
-          <span class="text-muted">(sem dados)</span>
-        {% endif %}
+        {% if r['current_title'] %}<a href="/item/{{ r['listing_id'] }}">{{ r['current_title'] }}</a>
+        {% else %}<span class="text-muted">(sem dados)</span>{% endif %}
       </td>
       <td class="text-end price">
         {{ r['current_price'] or '-' }}
@@ -94,22 +83,17 @@
       <td>{{ r['current_location'] or '-' }}</td>
       <td class="text-end">{{ r['opportunity_score'] or '-' }}</td>
       <td class="text-end">
-        {% if r['discount_percentage'] is not none %}
-          {{ "%.0f"|format(r['discount_percentage']) }}%
-        {% else %}-{% endif %}
+        {% if r['discount_percentage'] is not none %}{{ "%.0f"|format(r['discount_percentage']) }}%{% else %}-{% endif %}
       </td>
       <td class="mono text-muted small">{{ r['first_seen'][:19] }}</td>
       <td>
-        {% if r['is_removed'] %}
-          <span class="text-muted">removido</span>
-        {% else %}
-          <span class="status-{{ r['last_status'] }}">{{ r['last_status'] or '-' }}</span>
-        {% endif %}
+        {% if r['is_removed'] %}<span class="text-muted">removido</span>
+        {% else %}<span class="status-{{ r['last_status'] }}">{{ r['last_status'] or '-' }}</span>{% endif %}
       </td>
     </tr>
   {% else %}
     <tr><td colspan="9" class="text-center text-muted p-4">
-      Nenhum anúncio coletado ainda. Rode o backfill ou aguarde a próxima passada do monitor.
+      Nenhum anúncio coletado ainda. Clique em "buscar agora" acima ou aguarde a próxima execução automática.
     </td></tr>
   {% endfor %}
   </tbody>

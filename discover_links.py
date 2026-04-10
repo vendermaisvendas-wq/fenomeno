@@ -54,35 +54,63 @@ class SearchBackend(Protocol):
 
 
 class DuckDuckGoBackend:
-    """DDG HTML endpoint. Retorna (title, target_url) por resultado."""
-    name = "ddg"
-    base = "https://html.duckduckgo.com/html/"
+    """Backend usando a lib `ddgs` (API oficial do DDG). A antiga API HTML
+    parou de funcionar (retorna 202 sem resultados desde ~2025). A lib `ddgs`
+    usa os endpoints corretos internamente.
 
-    def __init__(self, delay_range: tuple[float, float] = (5.0, 9.0)) -> None:
+    Fallback: se `ddgs` não estiver instalado, tenta o HTML endpoint legado
+    (provavelmente não vai funcionar, mas não quebra).
+    """
+    name = "ddg"
+
+    def __init__(self, delay_range: tuple[float, float] = (3.0, 6.0)) -> None:
         self.delay_range = delay_range
 
     def search(self, query: str, max_pages: int) -> Iterator[tuple[str, str]]:
+        max_results = max_pages * 20
+        try:
+            return self._search_ddgs_lib(query, max_results)
+        except ImportError:
+            print("[ddg] lib 'ddgs' não instalada — pip install ddgs", file=sys.stderr)
+            print("[ddg] tentando HTML endpoint legado (pode falhar)...", file=sys.stderr)
+            return self._search_html_fallback(query, max_pages)
+
+    def _search_ddgs_lib(self, query: str, max_results: int) -> Iterator[tuple[str, str]]:
+        """Usa a lib ddgs (pip install ddgs) — funciona em 2025+."""
+        try:
+            from ddgs import DDGS
+        except ImportError:
+            from duckduckgo_search import DDGS  # nome antigo do pacote
+        results = DDGS().text(query, max_results=max_results)
+        for r in results:
+            href = r.get("href") or r.get("url") or ""
+            title = r.get("title") or ""
+            if href:
+                yield title, href
+            time.sleep(_jitter(*self.delay_range) * 0.3)  # rate limit leve
+
+    def _search_html_fallback(self, query: str, max_pages: int) -> Iterator[tuple[str, str]]:
+        """Fallback legado — HTML endpoint. Provavelmente não funciona mais."""
+        base = "https://html.duckduckgo.com/html/"
         for page in range(max_pages):
             params = {"q": query}
             if page:
                 params["s"] = str(page * 30)
             try:
                 r = requests.get(
-                    self.base,
-                    params=params,
+                    base, params=params,
                     headers={"User-Agent": DEFAULT_UA, "Accept-Language": "pt-BR,pt;q=0.9"},
                     timeout=20,
                 )
             except requests.RequestException as e:
                 print(f"[ddg] request error: {e}", file=sys.stderr)
                 return
-            if r.status_code != 200:
+            if r.status_code not in (200, 202):
                 print(f"[ddg] http {r.status_code}", file=sys.stderr)
                 return
             soup = BeautifulSoup(r.text, "html.parser")
             results = soup.select("a.result__a")
             if not results:
-                # DDG pode ter retornado anti-bot page
                 return
             for a in results:
                 href = a.get("href", "")
