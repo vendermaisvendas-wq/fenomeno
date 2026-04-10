@@ -283,8 +283,14 @@ def _touch_watcher(conn, watch_id: int) -> None:
 # --- run_backfill ---------------------------------------------------------
 
 def run_backfill(watch_id: int, max_pages: int = DEFAULT_MAX_PAGES_BACKFILL) -> dict:
-    """Descoberta inicial. Grava tudo como is_initial_backfill=1. NUNCA gera
-    evento watcher_match aqui — é o contrato: backfill = silencioso."""
+    """Descoberta inicial RÁPIDA. Grava anúncios usando dados do DDG (título +
+    URL) sem precisar extrair cada página do Facebook. Isso torna o backfill
+    rápido (~5s ao invés de ~80s) e viável em deploys com timeout curto.
+
+    Os anúncios ficam com status='pending' e dados parciais. A extração
+    completa (preço, localização, descrição) acontece quando o monitor rodar.
+
+    Grava tudo como is_initial_backfill=1 — sem alertas."""
     init_db()
     with connect() as conn:
         watcher = _load_watcher(conn, watch_id)
@@ -296,33 +302,38 @@ def run_backfill(watch_id: int, max_pages: int = DEFAULT_MAX_PAGES_BACKFILL) -> 
                 keyword=watcher["keyword"], region=watcher["region"]))
 
     hits = _discover_hits(watcher, max_pages=max_pages)
-    stats = {"discovered": len(hits), "matched": 0, "skipped": 0,
-             "skip_reasons": {}}
+    stats = {"discovered": len(hits), "matched": 0, "skipped": 0}
 
-    for listing in _iter_extract(iter(hits), seen):
-        if listing.status != "ok":
-            stats["skipped"] += 1
-            stats["skip_reasons"][f"extract_{listing.status}"] = \
-                stats["skip_reasons"].get(f"extract_{listing.status}", 0) + 1
-            continue
-        ok, reason = matches_watcher(listing, watcher)
-        if not ok:
-            stats["skipped"] += 1
-            stats["skip_reasons"][reason] = stats["skip_reasons"].get(reason, 0) + 1
-            continue
-
-        with connect() as conn:
-            _persist_listing(conn, listing)
-            _insert_result(conn, watch_id, listing.id, is_backfill=True)
-        stats["matched"] += 1
-        log.info(kv(watch_id=watch_id, listing=listing.id, event="backfill_match"))
-
+    now = now_iso()
     with connect() as conn:
+        for hit in hits:
+            if hit.item_id in seen:
+                continue
+
+            # Insere listing com dados parciais do DDG (sem extrair do FB)
+            existing = conn.execute(
+                "SELECT id FROM listings WHERE id = ?", (hit.item_id,)
+            ).fetchone()
+            if existing is None:
+                conn.execute(
+                    """
+                    INSERT INTO listings
+                      (id, url, source, first_seen_at, last_seen_at,
+                       last_status, current_title)
+                    VALUES (?, ?, 'watcher', ?, ?, 'pending', ?)
+                    """,
+                    (hit.item_id, hit.url, now, now, hit.title),
+                )
+
+            # Insere resultado do watcher
+            _insert_result(conn, watch_id, hit.item_id, is_backfill=True)
+            stats["matched"] += 1
+            seen.add(hit.item_id)
+
         _touch_watcher(conn, watch_id)
 
-    log.info(kv(event="backfill_done", watch_id=watch_id, **{
-        k: v for k, v in stats.items() if k != "skip_reasons"
-    }))
+    stats["skipped"] = stats["discovered"] - stats["matched"]
+    log.info(kv(event="backfill_done", watch_id=watch_id, **stats))
     return stats
 
 
