@@ -36,6 +36,17 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 app = FastAPI(title="FB Marketplace Audit")
 
 
+@app.on_event("startup")
+def startup():
+    from db import init_db
+    init_db()
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
 # --- páginas HTML ----------------------------------------------------------
 
 @app.get("/", response_class=HTMLResponse)
