@@ -76,12 +76,16 @@ def discover_and_validate(
     init_db()
     errors: list[str] = []
 
-    # 1. Montar queries
-    base_query = f"site:facebook.com/marketplace/item {keyword}"
-    if region:
-        base_query += f" {region}"
-
-    queries = [base_query]
+    # 1. Montar queries — NÃO usar site: (DDG bloqueia para facebook.com)
+    # Estratégia: múltiplas queries variadas que naturalmente retornam
+    # URLs do Marketplace entre os resultados genéricos
+    region_suffix = f" {region}" if region else ""
+    queries = [
+        f"facebook marketplace {keyword}{region_suffix}",
+        f"facebook marketplace {keyword} vendo{region_suffix}",
+        f"facebook marketplace {keyword} usado{region_suffix}",
+        f"facebook.com/marketplace {keyword}{region_suffix}",
+    ]
     if extra_queries:
         queries.extend(extra_queries)
 
