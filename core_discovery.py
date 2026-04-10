@@ -38,18 +38,61 @@ class DiscoveryResult:
     errors: list[str]
 
 
+def _search(query: str, max_results: int = 15) -> list[dict]:
+    """Busca com fallback automático:
+    1. Serper.dev (Google API) — se SERPER_API_KEY configurada
+    2. DDG (ddgs lib) — fallback local
+
+    Serper funciona de qualquer IP (ideal para servidores).
+    DDG é bloqueado em datacenters (Render, AWS, etc).
+    """
+    import os
+    serper_key = os.environ.get("SERPER_API_KEY")
+    if serper_key:
+        return _serper_search(query, serper_key, max_results)
+    return _ddg_search(query, max_results)
+
+
+def _serper_search(query: str, api_key: str, max_results: int = 15) -> list[dict]:
+    """Google via Serper.dev — funciona de qualquer IP, 2500 buscas/mês grátis."""
+    import requests as _req
+    try:
+        resp = _req.post(
+            "https://google.serper.dev/search",
+            json={"q": query, "num": min(max_results, 20)},
+            headers={"X-API-KEY": api_key, "Content-Type": "application/json"},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        results = []
+        for item in data.get("organic", []):
+            results.append({
+                "href": item.get("link", ""),
+                "title": item.get("title", ""),
+            })
+        log.info(kv(event="serper_search", query=query[:50],
+                     results=len(results)))
+        return results
+    except Exception as e:
+        log.error(kv(event="serper_error", error=str(e)[:100]))
+        return []
+
+
 def _ddg_search(query: str, max_results: int = 15) -> list[dict]:
-    """Busca no DDG com retry. Retorna lista de dicts com href+title."""
+    """Fallback: DDG via lib ddgs. Bloqueado em IPs de datacenter."""
     try:
         from ddgs import DDGS
     except ImportError:
-        raise RuntimeError("lib ddgs nao instalada: pip install ddgs")
+        log.warning(kv(event="ddgs_not_installed"))
+        return []
 
     for attempt in range(3):
         try:
             return DDGS().text(query, max_results=max_results)
         except Exception as e:
-            log.warning(kv(event="ddg_retry", attempt=attempt, error=str(e)[:80]))
+            log.warning(kv(event="ddg_retry", attempt=attempt,
+                           error=str(e)[:80]))
             if attempt < 2:
                 time.sleep(2)
     return []
@@ -94,7 +137,7 @@ def discover_and_validate(
     raw_urls: list[dict] = []
 
     for q in queries:
-        results = _ddg_search(q, max_results=max_ddg_results)
+        results = _search(q, max_results=max_ddg_results)
         for r in results:
             href = r.get("href") or r.get("url") or ""
             m = ITEM_RE.search(href)

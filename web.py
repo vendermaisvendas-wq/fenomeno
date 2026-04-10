@@ -149,13 +149,26 @@ def debug_pipeline():
             }
     except Exception as e:
         checks["banco"] = f"ERRO: {e}"
-    # DDG
-    try:
-        from ddgs import DDGS
-        r = DDGS().text("site:facebook.com/marketplace/item teste", max_results=3)
-        checks["ddg"] = f"OK ({len(r)} resultados)"
-    except Exception as e:
-        checks["ddg"] = f"ERRO: {e}"
+    # Search backend
+    import os
+    serper_key = os.environ.get("SERPER_API_KEY")
+    if serper_key:
+        checks["search_backend"] = "Serper.dev (Google API)"
+        try:
+            from core_discovery import _serper_search
+            r = _serper_search("facebook marketplace teste", serper_key, 3)
+            checks["search_test"] = f"OK ({len(r)} resultados)"
+        except Exception as e:
+            checks["search_test"] = f"ERRO: {e}"
+    else:
+        checks["search_backend"] = "DDG (fallback — bloqueado em datacenters)"
+        checks["SERPER_API_KEY"] = "NAO CONFIGURADA — configure em serper.dev"
+        try:
+            from ddgs import DDGS
+            r = DDGS().text("facebook marketplace teste", max_results=3)
+            checks["search_test"] = f"DDG: {len(r)} resultados"
+        except Exception as e:
+            checks["search_test"] = f"DDG BLOQUEADO: {e}"
     # Extract
     try:
         from extract_item import extract
