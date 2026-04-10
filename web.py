@@ -47,6 +47,56 @@ def health():
     return {"status": "ok"}
 
 
+@app.get("/debug-error")
+def debug_error():
+    """Testa se o template e o DB funcionam."""
+    import traceback
+    errors = []
+    try:
+        from db import init_db
+        init_db()
+        errors.append("db.init_db: OK")
+    except Exception as e:
+        errors.append(f"db.init_db: FAIL - {traceback.format_exc()}")
+    try:
+        with connect() as conn:
+            n = conn.execute("SELECT COUNT(*) FROM listings").fetchone()[0]
+            errors.append(f"db.query: OK (listings={n})")
+    except Exception as e:
+        errors.append(f"db.query: FAIL - {traceback.format_exc()}")
+    try:
+        from pathlib import Path as P
+        tdir = P(__file__).parent / "templates"
+        files = list(tdir.glob("*.html"))
+        errors.append(f"templates dir: {tdir} ({len(files)} files)")
+    except Exception as e:
+        errors.append(f"templates: FAIL - {traceback.format_exc()}")
+    try:
+        resp = templates.TemplateResponse("index.html", {
+            "request": None, "rows": [], "total": 0, "removed": 0,
+        })
+        errors.append("template render: needs request object (expected)")
+    except Exception as e:
+        errors.append(f"template render: {type(e).__name__}: {e}")
+    return JSONResponse({"checks": errors})
+
+
+# Mostra traceback real em caso de erro 500
+from fastapi.responses import PlainTextResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+
+class DebugMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        try:
+            return await call_next(request)
+        except Exception as e:
+            import traceback
+            tb = traceback.format_exc()
+            return PlainTextResponse(f"500 Internal Server Error\n\n{tb}", status_code=500)
+
+app.add_middleware(DebugMiddleware)
+
+
 # --- páginas HTML ----------------------------------------------------------
 
 @app.get("/", response_class=HTMLResponse)
