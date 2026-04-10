@@ -282,16 +282,11 @@ def _touch_watcher(conn, watch_id: int) -> None:
 
 # --- run_backfill ---------------------------------------------------------
 
-def run_backfill(watch_id: int, max_pages: int = DEFAULT_MAX_PAGES_BACKFILL,
-                 validate_limit: int = 15) -> dict:
-    """Descoberta inicial COM validação no Facebook.
+def run_backfill(watch_id: int, validate_limit: int = 10) -> dict:
+    """Backfill via core_discovery: DDG → validação FB → persist → watcher_results.
 
-    1. Busca URLs no DuckDuckGo (rápido)
-    2. Para cada URL (até validate_limit), extrai dados reais do Facebook
-    3. Filtra: só insere anúncios ATIVOS (status=ok, com título)
-    4. Descarta vendidos/removidos/login_wall
-
-    Grava tudo como is_initial_backfill=1 — sem alertas."""
+    Usa core_discovery.discover_and_validate que já faz DDG + extract + persist.
+    Depois associa os listings encontrados ao watcher via watcher_results."""
     init_db()
     with connect() as conn:
         watcher = _load_watcher(conn, watch_id)
@@ -302,33 +297,35 @@ def run_backfill(watch_id: int, max_pages: int = DEFAULT_MAX_PAGES_BACKFILL,
     log.info(kv(event="backfill_start", watch_id=watch_id,
                 keyword=watcher["keyword"], region=watcher["region"]))
 
-    hits = _discover_hits(watcher, max_pages=max_pages)
-    # Filtrar apenas os que são novos (não vistos antes)
-    new_hits = [h for h in hits if h.item_id not in seen][:validate_limit]
+    # core_discovery faz DDG + extract + persist tudo de uma vez
+    from core_discovery import discover_and_validate
+    result = discover_and_validate(
+        keyword=watcher["keyword"],
+        region=watcher.get("region"),
+        max_validate=validate_limit,
+        persist=True,
+    )
 
-    stats = {"discovered": len(hits), "validated": 0, "active": 0,
-             "rejected": 0, "matched": 0}
-
-    for listing in _iter_extract(iter(new_hits), seen):
-        stats["validated"] += 1
-        if listing.status != "ok" or not listing.title:
-            stats["rejected"] += 1
-            log.info(kv(watch_id=watch_id, listing=listing.id,
-                        event="backfill_rejected", status=listing.status))
-            continue
-
-        stats["active"] += 1
-        with connect() as conn:
-            _persist_listing(conn, listing)
-            _insert_result(conn, watch_id, listing.id, is_backfill=True)
-        stats["matched"] += 1
-        seen.add(listing.id)
-        log.info(kv(watch_id=watch_id, listing=listing.id,
-                     event="backfill_match", title=(listing.title or "")[:40]))
-
+    # Associar listings encontrados ao watcher
+    matched = 0
     with connect() as conn:
+        for listing_data in result.listings:
+            lid = listing_data["item_id"]
+            if lid in seen:
+                continue
+            _insert_result(conn, watch_id, lid, is_backfill=True)
+            matched += 1
+            seen.add(lid)
         _touch_watcher(conn, watch_id)
 
+    stats = {
+        "urls_ddg": result.urls_found,
+        "validated": result.validated,
+        "active": result.active,
+        "rejected": result.rejected,
+        "inserted_db": result.inserted,
+        "watcher_matches": matched,
+    }
     log.info(kv(event="backfill_done", watch_id=watch_id, **stats))
     return stats
 

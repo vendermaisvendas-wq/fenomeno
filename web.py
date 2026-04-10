@@ -55,203 +55,81 @@ def health():
     return {"status": "ok"}
 
 
+@app.get("/debug-database")
+def debug_database():
+    """Estado bruto do banco."""
+    with connect() as conn:
+        listings = [dict(r) for r in conn.execute(
+            "SELECT id, current_title, current_price, current_location, last_status "
+            "FROM listings ORDER BY first_seen_at DESC LIMIT 20"
+        ).fetchall()]
+        wr = [dict(r) for r in conn.execute(
+            "SELECT watch_id, listing_id, first_seen FROM watcher_results "
+            "ORDER BY first_seen DESC LIMIT 20"
+        ).fetchall()]
+    return JSONResponse({"listings": listings, "watcher_results": wr})
+
+
 @app.get("/debug-discovery", response_class=HTMLResponse)
 def debug_discovery(request: Request,
                     keyword: str = Query("iphone"),
                     region: str = Query(""),
-                    limit: int = Query(10, ge=1, le=30)):
-    """Discovery real + validação no Facebook. Só insere anúncios ATIVOS."""
-    import re
-    import time
-    steps = []
-    validated = []
-    rejected = []
-    inserted_count = 0
-
-    # Passo 1: DDG
-    try:
-        from ddgs import DDGS
-    except ImportError:
-        steps.append({"s": "Biblioteca DDG", "ok": False, "d": "ddgs nao instalado"})
-        return _render_debug(request, keyword, region, limit, steps, validated, rejected, 0)
-
-    queries = [f"site:facebook.com/marketplace/item {keyword}"]
-    if region:
-        queries[0] += f" {region}"
-    try:
-        from keyword_expander import expand
-        for v in expand(keyword, max_variations=3)[1:]:
-            q = f"site:facebook.com/marketplace/item {v}"
-            if region:
-                q += f" {region}"
-            queries.append(q)
-    except Exception:
-        pass
-
-    # Passo 2: executar queries DDG
-    raw_hits = []
-    item_re = re.compile(r"facebook\.com/marketplace/item/(\d+)")
-    seen = set()
-    for q in queries:
-        try:
-            results = DDGS().text(q, max_results=15)
-            count = 0
-            for r in results:
-                href = r.get("href") or r.get("url") or ""
-                m = item_re.search(href)
-                if m and m.group(1) not in seen:
-                    seen.add(m.group(1))
-                    raw_hits.append({"item_id": m.group(1), "url": href,
-                                     "title_ddg": r.get("title", "")})
-                    count += 1
-            steps.append({"s": f"DDG: {q[:60]}...", "ok": True, "d": f"+{count} novos"})
-        except Exception as e:
-            steps.append({"s": f"DDG: {q[:60]}...", "ok": False, "d": str(e)[:80]})
-
-    steps.append({"s": "URLs encontradas no DDG", "ok": True,
-                  "d": f"{len(raw_hits)} anuncios candidatos"})
-
-    # Passo 3: validar no Facebook (extrair dados reais, filtrar vendidos)
-    from extract_item import extract
-    to_check = raw_hits[:limit]
-    steps.append({"s": f"Validando {len(to_check)} no Facebook", "ok": True,
-                  "d": "extraindo titulo, preco, status de cada..."})
-
-    for i, h in enumerate(to_check):
-        try:
-            listing = extract(h["item_id"])
-            if listing.status == "ok" and listing.title:
-                validated.append({
-                    "item_id": h["item_id"],
-                    "url": h["url"],
-                    "title": listing.title,
-                    "price": listing.price_formatted or listing.price_amount or "-",
-                    "currency": listing.price_currency or "",
-                    "location": listing.location_text or "-",
-                    "status": "ok",
-                })
-            else:
-                rejected.append({
-                    "item_id": h["item_id"],
-                    "reason": listing.status,
-                    "title_ddg": h["title_ddg"][:60],
-                })
-        except Exception as e:
-            rejected.append({"item_id": h["item_id"], "reason": f"erro: {e}",
-                             "title_ddg": h["title_ddg"][:60]})
-        if i < len(to_check) - 1:
-            time.sleep(2)  # rate limit entre requests ao FB
-
-    steps.append({"s": "Validação Facebook", "ok": True,
-                  "d": f"{len(validated)} ativos, {len(rejected)} vendidos/removidos"})
-
-    # Passo 4: inserir só os validados no banco
-    if validated:
-        from db import now_iso, insert_event
-        now = now_iso()
-        with connect() as conn:
-            for v in validated:
-                existing = conn.execute(
-                    "SELECT id FROM listings WHERE id = ?", (v["item_id"],)
-                ).fetchone()
-                if not existing:
-                    conn.execute(
-                        """INSERT INTO listings
-                          (id, url, source, first_seen_at, last_seen_at,
-                           last_status, current_title, current_price,
-                           current_currency, current_location)
-                        VALUES (?, ?, 'discovery', ?, ?, 'ok', ?, ?, ?, ?)""",
-                        (v["item_id"], v["url"], now, now,
-                         v["title"], v["price"], v["currency"], v["location"]),
-                    )
-                    insert_event(conn, v["item_id"], now, "first_seen", None, v["title"])
-                    inserted_count += 1
-        steps.append({"s": "Inserir no banco", "ok": True,
-                      "d": f"{inserted_count} novos anuncios ativos inseridos"})
-
-    with connect() as conn:
-        total = conn.execute("SELECT COUNT(*) FROM listings").fetchone()[0]
-    steps.append({"s": "Total no banco", "ok": True, "d": f"{total} anuncios"})
-
-    return _render_debug(request, keyword, region, limit, steps, validated, rejected, inserted_count)
-
-
-def _render_debug(request, keyword, region, limit, steps, validated, rejected, inserted):
+                    limit: int = Query(8, ge=1, le=20)):
+    """Discovery via core_discovery: DDG → validação FB → persist."""
+    from core_discovery import discover_and_validate
+    from dataclasses import asdict
+    result = discover_and_validate(
+        keyword=keyword, region=region or None,
+        max_validate=limit, persist=True,
+    )
+    r = asdict(result)
     html = """{% extends "base.html" %}
 {% block title %}Testar Discovery{% endblock %}
 {% block content %}
 <h3>Testar Discovery</h3>
-<p class="text-muted">Busca anuncios no DuckDuckGo, valida no Facebook (filtra vendidos), e insere os ativos no banco.</p>
-
+<p class="text-muted">DDG busca URLs → Facebook valida cada uma → insere ativos no banco.</p>
 <form method="get" class="row g-2 mb-4">
-  <div class="col-auto">
-    <label class="form-label">Palavra-chave</label>
-    <input type="text" name="keyword" value="{{ keyword }}" class="form-control">
-  </div>
-  <div class="col-auto">
-    <label class="form-label">Regiao</label>
-    <input type="text" name="region" value="{{ region }}" class="form-control" placeholder="opcional">
-  </div>
-  <div class="col-auto">
-    <label class="form-label">Validar ate</label>
-    <input type="number" name="limit" value="{{ limit }}" min="1" max="30" class="form-control" style="width:80px">
-  </div>
+  <div class="col-auto"><label class="form-label">Palavra-chave</label>
+    <input type="text" name="keyword" value="{{ keyword }}" class="form-control"></div>
+  <div class="col-auto"><label class="form-label">Regiao</label>
+    <input type="text" name="region" value="{{ region }}" class="form-control" placeholder="opcional"></div>
+  <div class="col-auto"><label class="form-label">Validar</label>
+    <input type="number" name="limit" value="{{ limit }}" min="1" max="20" class="form-control" style="width:80px"></div>
   <div class="col-auto d-flex align-items-end">
-    <button class="btn btn-primary" type="submit">Executar</button>
-  </div>
+    <button class="btn btn-primary" type="submit">Executar</button></div>
 </form>
-
-<h5>Passos</h5>
-<table class="table table-sm mb-4">
-  <tbody>
-  {% for s in steps %}
-    <tr class="{% if not s.ok %}table-danger{% else %}table-success{% endif %}">
-      <td>{{ s.s }}</td>
-      <td class="mono small">{{ s.d }}</td>
-    </tr>
-  {% endfor %}
-  </tbody>
-</table>
-
-{% if validated %}
-<h5 class="text-success">{{ validated|length }} anuncios ATIVOS ({{ inserted }} novos inseridos)</h5>
+<div class="card mb-3"><div class="card-body">
+  <strong>Queries:</strong> {{ r.queries_executed|join(' | ') }}<br>
+  <strong>URLs no DDG:</strong> {{ r.urls_found }}<br>
+  <strong>Validados no FB:</strong> {{ r.validated }}<br>
+  <strong>Ativos:</strong> <span class="text-success fw-bold">{{ r.active }}</span> ·
+  <strong>Rejeitados:</strong> {{ r.rejected }}<br>
+  <strong>Novos inseridos no banco:</strong> <span class="text-primary fw-bold">{{ r.inserted }}</span>
+  {% if r.errors %}<br><span class="text-danger">Erros: {{ r.errors|join('; ') }}</span>{% endif %}
+</div></div>
+{% if r.listings %}
+<h5 class="text-success">Anuncios ATIVOS encontrados</h5>
 <table class="table table-sm table-hover">
-  <thead class="table-light"><tr>
-    <th>ID</th><th>Titulo</th><th>Preco</th><th>Local</th><th></th>
-  </tr></thead>
-  <tbody>
-  {% for v in validated %}
-    <tr>
-      <td class="mono">{{ v.item_id }}</td>
-      <td>{{ v.title[:70] }}</td>
-      <td class="price">{{ v.price }} {{ v.currency }}</td>
-      <td>{{ v.location }}</td>
-      <td><a href="{{ v.url }}" target="_blank">FB</a></td>
-    </tr>
-  {% endfor %}
-  </tbody>
-</table>
-{% endif %}
-
-{% if rejected %}
-<h5 class="text-muted">{{ rejected|length }} removidos/vendidos (filtrados)</h5>
+  <thead class="table-light"><tr><th>ID</th><th>Titulo</th><th>Preco</th><th>Local</th><th></th></tr></thead>
+  <tbody>{% for v in r.listings %}
+    <tr><td class="mono">{{ v.item_id }}</td><td>{{ v.title[:70] }}</td>
+      <td class="price">{{ v.price }} {{ v.currency }}</td><td>{{ v.location }}</td>
+      <td><a href="{{ v.url }}" target="_blank">FB</a></td></tr>
+  {% endfor %}</tbody>
+</table>{% endif %}
+{% if r.rejected_list %}
+<h5 class="text-muted">Filtrados (vendidos/removidos)</h5>
 <table class="table table-sm text-muted">
   <thead><tr><th>ID</th><th>Motivo</th><th>Titulo DDG</th></tr></thead>
-  <tbody>
-  {% for r in rejected %}
-    <tr><td class="mono">{{ r.item_id }}</td><td>{{ r.reason }}</td><td>{{ r.title_ddg }}</td></tr>
-  {% endfor %}
-  </tbody>
-</table>
-{% endif %}
-
-<p><a href="/" class="btn btn-outline-primary">Ver anuncios no dashboard</a></p>
+  <tbody>{% for x in r.rejected_list %}
+    <tr><td class="mono">{{ x.item_id }}</td><td>{{ x.reason }}</td><td>{{ x.title_ddg }}</td></tr>
+  {% endfor %}</tbody>
+</table>{% endif %}
+<a href="/" class="btn btn-outline-primary mt-3">Ver no dashboard</a>
 {% endblock %}"""
     tpl = templates.env.from_string(html)
-    return HTMLResponse(tpl.render(
-        request=request, keyword=keyword, region=region, limit=limit,
-        steps=steps, validated=validated, rejected=rejected, inserted=inserted,
-    ))
+    return HTMLResponse(tpl.render(request=request, keyword=keyword,
+                                   region=region, limit=limit, r=r))
 
 
 @app.get("/debug-pipeline")
