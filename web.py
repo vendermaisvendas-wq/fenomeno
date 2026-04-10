@@ -55,6 +55,81 @@ def health():
     return {"status": "ok"}
 
 
+@app.get("/test-discovery")
+def test_discovery(keyword: str = Query("iphone"), region: str = Query("")):
+    """Roda discovery AO VIVO e mostra o que encontra. Diagnóstico direto."""
+    import traceback
+    steps = []
+    hits_found = []
+
+    # Passo 1: ddgs instalado?
+    try:
+        from ddgs import DDGS
+        steps.append("1. lib ddgs: OK (importou)")
+    except ImportError:
+        try:
+            from duckduckgo_search import DDGS
+            steps.append("1. lib duckduckgo_search: OK (importou)")
+        except ImportError:
+            steps.append("1. ERRO: nem ddgs nem duckduckgo_search instalado!")
+            return JSONResponse({"steps": steps, "hits": []})
+
+    # Passo 2: buscar no DDG
+    query = f"site:facebook.com/marketplace/item {keyword}"
+    if region:
+        query += f" {region}"
+    steps.append(f"2. query: {query}")
+
+    try:
+        results = DDGS().text(query, max_results=10)
+        steps.append(f"3. DDG retornou {len(results)} resultados")
+    except Exception as e:
+        steps.append(f"3. ERRO DDG: {traceback.format_exc()}")
+        return JSONResponse({"steps": steps, "hits": []})
+
+    # Passo 3: filtrar marketplace
+    import re
+    item_re = re.compile(r"facebook\.com/marketplace/item/(\d+)")
+    for r in results:
+        href = r.get("href") or r.get("url") or ""
+        m = item_re.search(href)
+        if m:
+            hits_found.append({
+                "item_id": m.group(1),
+                "title": r.get("title", ""),
+                "url": href,
+            })
+    steps.append(f"4. {len(hits_found)} URLs de marketplace encontradas")
+
+    # Passo 4: se achou, inserir no banco
+    if hits_found:
+        try:
+            from db import now_iso
+            now = now_iso()
+            inserted = 0
+            with connect() as conn:
+                for h in hits_found:
+                    existing = conn.execute(
+                        "SELECT id FROM listings WHERE id = ?", (h["item_id"],)
+                    ).fetchone()
+                    if not existing:
+                        conn.execute(
+                            """INSERT INTO listings
+                              (id, url, source, first_seen_at, last_seen_at,
+                               last_status, current_title)
+                            VALUES (?, ?, 'test-discovery', ?, ?, 'pending', ?)""",
+                            (h["item_id"], h["url"], now, now, h["title"]),
+                        )
+                        inserted += 1
+            steps.append(f"5. {inserted} anuncios novos inseridos no banco")
+        except Exception as e:
+            steps.append(f"5. ERRO ao inserir: {traceback.format_exc()}")
+    else:
+        steps.append("5. nada para inserir (0 hits)")
+
+    return JSONResponse({"steps": steps, "hits": hits_found})
+
+
 @app.get("/debug-error")
 def debug_error():
     """Testa se o template e o DB funcionam."""
