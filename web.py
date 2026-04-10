@@ -37,9 +37,11 @@ app = FastAPI(title="FB Marketplace Audit")
 
 
 def _t(name: str, ctx: dict):
-    """Wrapper TemplateResponse compatível com Starlette novo e antigo."""
-    request = ctx.get("request")
-    return templates.TemplateResponse(request=request, name=name, context=ctx)
+    """Renderiza template Jinja2 diretamente, bypassing Starlette TemplateResponse
+    que tem bug de cache com Jinja2 3.1.5+ (unhashable dict as cache key)."""
+    template = templates.env.get_template(name)
+    html = template.render(ctx)
+    return HTMLResponse(content=html)
 
 
 @app.on_event("startup")
@@ -78,10 +80,9 @@ def debug_error():
     except Exception as e:
         errors.append(f"templates: FAIL - {traceback.format_exc()}")
     try:
-        resp = templates.TemplateResponse("index.html", {
-            "request": None, "rows": [], "total": 0, "removed": 0,
-        })
-        errors.append("template render: needs request object (expected)")
+        tpl = templates.env.get_template("index.html")
+        tpl.render({"request": None, "rows": [], "total": 0, "removed": 0})
+        errors.append("template render: OK")
     except Exception as e:
         errors.append(f"template render: {type(e).__name__}: {e}")
     return JSONResponse({"checks": errors})
