@@ -48,38 +48,6 @@ def _t(name: str, ctx: dict):
 def startup():
     from db import init_db
     init_db()
-    # Carrega dados pré-coletados se o banco estiver vazio
-    _load_seed_if_empty()
-
-
-def _load_seed_if_empty():
-    """Se o banco não tem listings, carrega de seed_real_data.json (129
-    anúncios reais pré-coletados durante o desenvolvimento)."""
-    import json as _json
-    from pathlib import Path as _P
-    seed_file = _P(__file__).parent / "seed_real_data.json"
-    if not seed_file.exists():
-        return
-    with connect() as conn:
-        count = conn.execute("SELECT COUNT(*) FROM listings").fetchone()[0]
-        if count > 0:
-            return  # já tem dados, não sobrescreve
-    try:
-        data = _json.loads(seed_file.read_text(encoding="utf-8"))
-        from db import now_iso
-        now = now_iso()
-        with connect() as conn:
-            for h in data:
-                conn.execute(
-                    """INSERT OR IGNORE INTO listings
-                      (id, url, source, first_seen_at, last_seen_at,
-                       last_status, current_title)
-                    VALUES (?, ?, 'seed', ?, ?, 'pending', ?)""",
-                    (h["item_id"], h["url"], now, now, h.get("title")),
-                )
-        print(f"[startup] {len(data)} anuncios carregados de seed_real_data.json")
-    except Exception as e:
-        print(f"[startup] erro ao carregar seed: {e}")
 
 
 @app.get("/health")
@@ -87,58 +55,73 @@ def health():
     return {"status": "ok"}
 
 
-@app.get("/test-discovery")
-def test_discovery(keyword: str = Query("iphone"), region: str = Query("")):
-    """Roda discovery AO VIVO e mostra o que encontra. Diagnóstico direto."""
+@app.get("/debug-discovery", response_class=HTMLResponse)
+def debug_discovery(request: Request,
+                    keyword: str = Query("iphone"),
+                    region: str = Query("")):
+    """Roda discovery real AO VIVO, insere no banco, e mostra tudo."""
     import traceback
+    import re
     steps = []
     hits_found = []
+    inserted_count = 0
 
-    # Passo 1: ddgs instalado?
+    # Passo 1: lib ddgs
     try:
         from ddgs import DDGS
-        steps.append("1. lib ddgs: OK (importou)")
+        steps.append({"step": "Biblioteca DDG", "status": "ok", "detail": "ddgs importado"})
     except ImportError:
-        try:
-            from duckduckgo_search import DDGS
-            steps.append("1. lib duckduckgo_search: OK (importou)")
-        except ImportError:
-            steps.append("1. ERRO: nem ddgs nem duckduckgo_search instalado!")
-            return JSONResponse({"steps": steps, "hits": []})
+        steps.append({"step": "Biblioteca DDG", "status": "erro", "detail": "ddgs nao instalado"})
+        return _render_debug_discovery(request, keyword, region, steps, hits_found, 0)
 
-    # Passo 2: buscar no DDG
-    query = f"site:facebook.com/marketplace/item {keyword}"
+    # Passo 2: queries DDG
+    queries_to_run = [f"site:facebook.com/marketplace/item {keyword}"]
     if region:
-        query += f" {region}"
-    steps.append(f"2. query: {query}")
-
+        queries_to_run[0] += f" {region}"
+    # Adiciona variação
     try:
-        results = DDGS().text(query, max_results=10)
-        steps.append(f"3. DDG retornou {len(results)} resultados")
-    except Exception as e:
-        steps.append(f"3. ERRO DDG: {traceback.format_exc()}")
-        return JSONResponse({"steps": steps, "hits": []})
+        from keyword_expander import expand
+        variations = expand(keyword, max_variations=3)
+        for v in variations[1:]:
+            q = f"site:facebook.com/marketplace/item {v}"
+            if region:
+                q += f" {region}"
+            queries_to_run.append(q)
+    except Exception:
+        pass
+
+    all_results = []
+    for q in queries_to_run:
+        try:
+            results = DDGS().text(q, max_results=15)
+            all_results.extend(results)
+            steps.append({"step": f"Query: {q[:70]}", "status": "ok",
+                          "detail": f"{len(results)} resultados"})
+        except Exception as e:
+            steps.append({"step": f"Query: {q[:70]}", "status": "erro",
+                          "detail": str(e)[:100]})
 
     # Passo 3: filtrar marketplace
-    import re
     item_re = re.compile(r"facebook\.com/marketplace/item/(\d+)")
-    for r in results:
+    seen_ids = set()
+    for r in all_results:
         href = r.get("href") or r.get("url") or ""
         m = item_re.search(href)
-        if m:
+        if m and m.group(1) not in seen_ids:
+            seen_ids.add(m.group(1))
             hits_found.append({
                 "item_id": m.group(1),
                 "title": r.get("title", ""),
                 "url": href,
             })
-    steps.append(f"4. {len(hits_found)} URLs de marketplace encontradas")
+    steps.append({"step": "Filtrar marketplace", "status": "ok",
+                  "detail": f"{len(hits_found)} anuncios unicos do marketplace"})
 
-    # Passo 4: se achou, inserir no banco
+    # Passo 4: inserir no banco
     if hits_found:
         try:
             from db import now_iso
             now = now_iso()
-            inserted = 0
             with connect() as conn:
                 for h in hits_found:
                     existing = conn.execute(
@@ -149,17 +132,80 @@ def test_discovery(keyword: str = Query("iphone"), region: str = Query("")):
                             """INSERT INTO listings
                               (id, url, source, first_seen_at, last_seen_at,
                                last_status, current_title)
-                            VALUES (?, ?, 'test-discovery', ?, ?, 'pending', ?)""",
+                            VALUES (?, ?, 'discovery', ?, ?, 'pending', ?)""",
                             (h["item_id"], h["url"], now, now, h["title"]),
                         )
-                        inserted += 1
-            steps.append(f"5. {inserted} anuncios novos inseridos no banco")
+                        inserted_count += 1
+            steps.append({"step": "Inserir no banco", "status": "ok",
+                          "detail": f"{inserted_count} novos inseridos"})
         except Exception as e:
-            steps.append(f"5. ERRO ao inserir: {traceback.format_exc()}")
-    else:
-        steps.append("5. nada para inserir (0 hits)")
+            steps.append({"step": "Inserir no banco", "status": "erro",
+                          "detail": traceback.format_exc()[:200]})
 
-    return JSONResponse({"steps": steps, "hits": hits_found})
+    # Passo 5: total no banco
+    with connect() as conn:
+        total = conn.execute("SELECT COUNT(*) FROM listings").fetchone()[0]
+    steps.append({"step": "Total no banco", "status": "ok",
+                  "detail": f"{total} anuncios"})
+
+    return _render_debug_discovery(request, keyword, region, steps, hits_found, inserted_count)
+
+
+def _render_debug_discovery(request, keyword, region, steps, hits, inserted):
+    html = """{% extends "base.html" %}
+{% block title %}Debug Discovery{% endblock %}
+{% block content %}
+<h3>Debug Discovery</h3>
+<form method="get" class="row g-2 mb-4">
+  <div class="col-auto">
+    <input type="text" name="keyword" value="{{ keyword }}" class="form-control" placeholder="palavra-chave">
+  </div>
+  <div class="col-auto">
+    <input type="text" name="region" value="{{ region }}" class="form-control" placeholder="regiao (opcional)">
+  </div>
+  <div class="col-auto">
+    <button class="btn btn-primary" type="submit">Executar discovery</button>
+  </div>
+</form>
+
+<h5>Passos executados</h5>
+<table class="table table-sm">
+  <thead><tr><th>Passo</th><th>Status</th><th>Detalhe</th></tr></thead>
+  <tbody>
+  {% for s in steps %}
+    <tr class="{% if s.status == 'erro' %}table-danger{% else %}table-success{% endif %}">
+      <td>{{ s.step }}</td>
+      <td><strong>{{ s.status }}</strong></td>
+      <td class="mono small">{{ s.detail }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<h5>{{ hits|length }} anuncios encontrados ({{ inserted }} novos inseridos)</h5>
+<table class="table table-sm">
+  <thead><tr><th>ID</th><th>Titulo</th><th>Link</th></tr></thead>
+  <tbody>
+  {% for h in hits %}
+    <tr>
+      <td class="mono">{{ h.item_id }}</td>
+      <td>{{ h.title[:80] }}</td>
+      <td><a href="{{ h.url }}" target="_blank">FB &nearr;</a>
+          <a href="/item/{{ h.item_id }}" class="ms-2">ver</a></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<p class="text-muted">
+  Depois de executar, vá para <a href="/">Anuncios</a> para ver os resultados no dashboard.
+</p>
+{% endblock %}"""
+    tpl = templates.env.from_string(html)
+    return HTMLResponse(tpl.render(
+        request=request, keyword=keyword, region=region,
+        steps=steps, hits=hits, inserted=inserted,
+    ))
 
 
 @app.get("/debug-error")
