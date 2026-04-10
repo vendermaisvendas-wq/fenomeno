@@ -48,6 +48,38 @@ def _t(name: str, ctx: dict):
 def startup():
     from db import init_db
     init_db()
+    # Carrega dados pré-coletados se o banco estiver vazio
+    _load_seed_if_empty()
+
+
+def _load_seed_if_empty():
+    """Se o banco não tem listings, carrega de seed_real_data.json (129
+    anúncios reais pré-coletados durante o desenvolvimento)."""
+    import json as _json
+    from pathlib import Path as _P
+    seed_file = _P(__file__).parent / "seed_real_data.json"
+    if not seed_file.exists():
+        return
+    with connect() as conn:
+        count = conn.execute("SELECT COUNT(*) FROM listings").fetchone()[0]
+        if count > 0:
+            return  # já tem dados, não sobrescreve
+    try:
+        data = _json.loads(seed_file.read_text(encoding="utf-8"))
+        from db import now_iso
+        now = now_iso()
+        with connect() as conn:
+            for h in data:
+                conn.execute(
+                    """INSERT OR IGNORE INTO listings
+                      (id, url, source, first_seen_at, last_seen_at,
+                       last_status, current_title)
+                    VALUES (?, ?, 'seed', ?, ?, 'pending', ?)""",
+                    (h["item_id"], h["url"], now, now, h.get("title")),
+                )
+        print(f"[startup] {len(data)} anuncios carregados de seed_real_data.json")
+    except Exception as e:
+        print(f"[startup] erro ao carregar seed: {e}")
 
 
 @app.get("/health")
@@ -784,8 +816,12 @@ def watchers_create(
         max_price=_to_float(max_price),
     )
     if backfill == "1":
-        background_tasks.add_task(run_backfill, wid)
-    return RedirectResponse(url="/watchers", status_code=303)
+        try:
+            result = run_backfill(wid)
+            print(f"[watcher] backfill #{wid}: {result}")
+        except Exception as e:
+            print(f"[watcher] backfill #{wid} erro: {e}")
+    return RedirectResponse(url=f"/watchers/{wid}", status_code=303)
 
 
 @app.post("/watchers/{watch_id}/toggle")
@@ -805,16 +841,22 @@ def watchers_toggle(watch_id: int):
 
 
 @app.post("/watchers/{watch_id}/backfill")
-def watchers_backfill(watch_id: int, background_tasks: BackgroundTasks):
+def watchers_backfill(watch_id: int):
     from watcher_engine import run_backfill
-    background_tasks.add_task(run_backfill, watch_id)
-    return RedirectResponse(url="/watchers", status_code=303)
+    try:
+        run_backfill(watch_id)
+    except Exception as e:
+        print(f"[watcher] backfill #{watch_id} erro: {e}")
+    return RedirectResponse(url=f"/watchers/{watch_id}", status_code=303)
 
 
 @app.post("/watchers/{watch_id}/monitor")
-def watchers_monitor_now(watch_id: int, background_tasks: BackgroundTasks):
+def watchers_monitor_now(watch_id: int):
     from watcher_engine import monitor_watch
-    background_tasks.add_task(monitor_watch, watch_id)
+    try:
+        monitor_watch(watch_id)
+    except Exception as e:
+        print(f"[watcher] monitor #{watch_id} erro: {e}")
     return RedirectResponse(url=f"/watchers/{watch_id}", status_code=303)
 
 
