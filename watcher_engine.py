@@ -297,9 +297,9 @@ def run_backfill(watch_id: int, validate_limit: int = 10) -> dict:
     log.info(kv(event="backfill_start", watch_id=watch_id,
                 keyword=watcher["keyword"], region=watcher["region"]))
 
-    # core_discovery faz DDG + extract + persist tudo de uma vez
-    from core_discovery import discover_and_validate
-    result = discover_and_validate(
+    # discovery_orchestrator roda múltiplas estratégias + valida + persiste
+    from discovery_orchestrator import discover_validate_persist
+    result = discover_validate_persist(
         keyword=watcher["keyword"],
         region=watcher.get("region"),
         max_validate=validate_limit,

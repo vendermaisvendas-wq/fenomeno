@@ -75,10 +75,10 @@ def debug_discovery(request: Request,
                     keyword: str = Query("iphone"),
                     region: str = Query(""),
                     limit: int = Query(8, ge=1, le=20)):
-    """Discovery via core_discovery: DDG → validação FB → persist."""
-    from core_discovery import discover_and_validate
+    """Discovery multi-estratégia via discovery_orchestrator."""
+    from discovery_orchestrator import discover_validate_persist
     from dataclasses import asdict
-    result = discover_and_validate(
+    result = discover_validate_persist(
         keyword=keyword, region=region or None,
         max_validate=limit, persist=True,
     )
@@ -99,13 +99,18 @@ def debug_discovery(request: Request,
     <button class="btn btn-primary" type="submit">Executar</button></div>
 </form>
 <div class="card mb-3"><div class="card-body">
-  <strong>Queries:</strong> {{ r.queries_executed|join(' | ') }}<br>
-  <strong>URLs no DDG:</strong> {{ r.urls_found }}<br>
+  <strong>Estrategias:</strong> {{ r.strategies_run }} ({{ r.strategies_ok }} OK, {{ r.strategies_failed }} falharam)<br>
+  {% for s in r.per_strategy %}
+    <span class="{% if s.error %}text-danger{% else %}text-success{% endif %}">
+      {{ s.name }}: {% if s.error %}ERRO ({{ s.error[:40] }}){% else %}{{ s.urls }} URLs{% endif %}
+    </span><br>
+  {% endfor %}
+  <hr class="my-2">
+  <strong>IDs unicos:</strong> {{ r.unique_ids }}<br>
   <strong>Validados no FB:</strong> {{ r.validated }}<br>
   <strong>Ativos:</strong> <span class="text-success fw-bold">{{ r.active }}</span> ·
   <strong>Rejeitados:</strong> {{ r.rejected }}<br>
-  <strong>Novos inseridos no banco:</strong> <span class="text-primary fw-bold">{{ r.inserted }}</span>
-  {% if r.errors %}<br><span class="text-danger">Erros: {{ r.errors|join('; ') }}</span>{% endif %}
+  <strong>Novos inseridos:</strong> <span class="text-primary fw-bold">{{ r.inserted }}</span>
 </div></div>
 {% if r.listings %}
 <h5 class="text-success">Anuncios ATIVOS encontrados</h5>
